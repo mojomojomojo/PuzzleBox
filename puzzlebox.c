@@ -51,6 +51,9 @@ main (int argc, const char *argv[])
    double clearance = 0.4;      // General X/Y clearance for parts
    double nubrclearance = 0.1;  // Extra radius clearance for nub, should be less than clearance, can be -ve
    double nubzclearance = 0.2;  // Extra Z clearance (per /4 maze step)
+   double nubhorizontal = 1.0;  // Nub horizontal (circumferential) size multiplier
+   double nubvertical = 1.0;    // Nub vertical (height) size multiplier
+   double nubnormal = 1.0;      // Nub normal (radial depth) size multiplier
    double parkthickness = 0.7;
    double coregap = 0;
    double outerround = 2;
@@ -137,6 +140,12 @@ main (int argc, const char *argv[])
        "mm"},
       {"nub-z-clearance", 'Z', POPT_ARG_DOUBLE | POPT_ARGFLAG_SHOW_DEFAULT, &nubzclearance, 0, "Extra clearance on height of nub",
        "mm"},
+      {"nub-horizontal", 0, POPT_ARG_DOUBLE | POPT_ARGFLAG_SHOW_DEFAULT, &nubhorizontal, 0, "Nub horizontal (circumferential) size multiplier",
+       "factor"},
+      {"nub-vertical", 0, POPT_ARG_DOUBLE | POPT_ARGFLAG_SHOW_DEFAULT, &nubvertical, 0, "Nub vertical (height) size multiplier",
+       "factor"},
+      {"nub-normal", 0, POPT_ARG_DOUBLE | POPT_ARGFLAG_SHOW_DEFAULT, &nubnormal, 0, "Nub normal (radial depth) size multiplier",
+       "factor"},
       {"outer-sides", 's', POPT_ARG_INT | (outersides ? POPT_ARGFLAG_SHOW_DEFAULT : 0), &outersides, 0, "Number of outer sides",
        "N (0=round)"},
       {"outer-round", 'r', POPT_ARG_DOUBLE | POPT_ARGFLAG_SHOW_DEFAULT, &outerround, 0, "Outer rounding on ends", "mm"},
@@ -1358,10 +1367,10 @@ main (int argc, const char *argv[])
       // Nubs
       void addnub (double r, int inside)
       {
-         double ri = r + (inside ? -mazethickness : mazethickness);
+         double ri = r + (inside ? -mazethickness : mazethickness) * nubnormal;
          int W = ((int) ((ri + (inside ? -clearance : clearance)) * 2 * M_PI / mazestep)) / nubs * nubs;
-         double da = (double) 2 * M_PI / W / 4; // x angle per 1/4 maze step
-         double dz = mazestep / 4 - nubzclearance;
+         double da = (double) 2 * M_PI / W / 4 * nubhorizontal; // x angle per 1/4 maze step (scaled by nubhorizontal)
+         double dz = (mazestep / 4 - nubzclearance) * nubvertical;
          double my = mazestep * da * 4 * helix / (r * 2 * M_PI);
          if (inside)
             da = -da;
