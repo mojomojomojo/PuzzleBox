@@ -86,6 +86,8 @@ main (int argc, const char *argv[])
    int parkvertical = 0;
    int mazecomplexity = 5;
    int mirrorinside = 0;        // Clockwise lock on inside - may be unwise as more likely to come undone with outer.
+   int fixnubs = 0;             // Fix nub position opposite maze exit
+   double globalexit = 0;       // Global maze exit angle (for fix-nubs across all parts)
    int noa = 0;
    int basewide = 0;
    int stl = 0;
@@ -146,6 +148,7 @@ main (int argc, const char *argv[])
        "factor"},
       {"nub-normal", 0, POPT_ARG_DOUBLE | POPT_ARGFLAG_SHOW_DEFAULT, &nubnormal, 0, "Nub normal (radial depth) size multiplier",
        "factor"},
+      {"fix-nubs", 0, POPT_ARG_NONE, &fixnubs, 0, "Fix nub position opposite maze exit"},
       {"outer-sides", 's', POPT_ARG_INT | (outersides ? POPT_ARGFLAG_SHOW_DEFAULT : 0), &outersides, 0, "Number of outer sides",
        "N (0=round)"},
       {"outer-round", 'r', POPT_ARG_DOUBLE | POPT_ARGFLAG_SHOW_DEFAULT, &outerround, 0, "Outer rounding on ends", "mm"},
@@ -588,6 +591,7 @@ main (int argc, const char *argv[])
         Z,
         S;
       double entrya = 0;        // Entry angle
+      double mazeexit = 0;      // Maze exit angle (saved for opposite nub positioning)
       int mazeinside = inside;  // This part has maze inside
       int mazeoutside = !inside;        // This part has maze outside
       int nextinside = inside;  // Next part has maze inside
@@ -899,6 +903,9 @@ main (int argc, const char *argv[])
                fprintf (out, "// Path length %d\n", max);
             }
             entrya = (double) 360 *maxx / W;
+            mazeexit = entrya;  // Save maze exit angle for opposite nub positioning
+            if (fixnubs && globalexit == 0)
+               globalexit = entrya;  // Save first maze exit globally for consistent nub positioning
             // Entry point for maze
             for (X = maxx % (W / nubs); X < W; X += W / nubs)
             {
@@ -1357,6 +1364,12 @@ main (int argc, const char *argv[])
          fprintf (out, "translate([0,0,%lld])cylinder(r=%lld,h=%lld,$fn=%d);\n", scaled (basethickness), scaled (r0 + clearance + (!mazeinside && part < parts ? clearance : 0)), scaled (height - basethickness), W * 4);      // Solid core
       if ((mazeoutside && !flip && part == parts) || (!mazeoutside && part + 1 == parts))
          entrya = 0;            // Align for lid alignment
+      else if (fixnubs)
+      {
+         entrya = globalexit + 180.0;  // Fixed position opposite maze exit (using global)
+         if (entrya >= 360.0)
+            entrya -= 360.0;
+      }
       else if (part < parts && !basewide)
       {                         // We can position randomly
          int v;
