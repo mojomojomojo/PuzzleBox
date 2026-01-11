@@ -39,6 +39,10 @@ else:
 #     0.082 in ≅ 2.0828 mm
 #   13 cells tall
 
+# Needed features
+#   base: larger radius, slot for exit
+#   chamfer on inside, top
+
 command = [
     './puzzlebox',
     '--parts', 4,            # 5 parts, 4 mazes
@@ -59,7 +63,7 @@ command = [
     '--part-thickness', 2,   # wall thickness (mm) (wall of the cylinder, not the maze)
     '--park-thickness', 2,   # thickness of park ridge to click closed (mm)
     '--maze-thickness', 2,   # maze thickness (mm); the height of the maze walls
-    '--maze-step', 4,        # maze spacing (mm); the distance between one cell and the next
+    '--maze-step', 5,        # maze spacing (mm); the (centerline) distance between one cell and the next
     '--maze-margin', 1,      # maze top margin (mm)
     '--maze-complexity', 10, # [-10, +10]
     '--outer-sides', 0,      # side count (0: round)
