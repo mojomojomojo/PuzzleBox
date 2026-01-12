@@ -5,6 +5,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <stdarg.h>
 #include <popt.h>
 #include <err.h>
 #include <stdlib.h>
@@ -97,6 +98,9 @@ main (int argc, const char *argv[])
    int mirrorinside = 0;        // Clockwise lock on inside - may be unwise as more likely to come undone with outer.
    int fixnubs = 0;             // Fix nub position opposite maze exit
    double globalexit = 0;       // Global maze exit angle (for fix-nubs across all parts)
+   char *mazedata = NULL;       // Buffer to store maze visualization data for STL comments
+   size_t mazedatasize = 0;     // Current size of maze data buffer
+   size_t mazedatacap = 0;      // Capacity of maze data buffer
    int noa = 0;
    int basewide = 0;
    int stl = 0;
@@ -576,6 +580,30 @@ main (int argc, const char *argv[])
              "module logo(w=100,white=0,$fn=100){scale(w/100){if(!white)difference(){circle(d=100.5);circle(d=99.5);}difference(){if(white)circle(d=100);difference(){circle(d=92);for(m=[0,1])mirror([m,0,0]){difference(){translate([24,0,0])circle(r=22.5);translate([24,0,0])circle(r=15);}polygon([[1.5,22],[9,22],[9,-18.5],[1.5,-22]]);}}}}} // A&A Logo is copyright (c) 2013 and trademark Andrews & Arnold Ltd\n");
    }
    /**
+    * Appends formatted string to the maze data buffer for later inclusion in STL comments.
+    * Dynamically grows the buffer as needed.
+    */
+   void appendmazedata (const char *fmt, ...)
+   {
+      va_list ap;
+      va_start (ap, fmt);
+      size_t needed = vsnprintf (NULL, 0, fmt, ap) + 1;
+      va_end (ap);
+      
+      if (mazedatasize + needed > mazedatacap)
+      {
+         mazedatacap = mazedatasize + needed + 4096;
+         mazedata = realloc (mazedata, mazedatacap);
+         if (!mazedata)
+            err (1, "Failed to allocate maze data buffer");
+      }
+      
+      va_start (ap, fmt);
+      vsnprintf (mazedata + mazedatasize, needed, fmt, ap);
+      va_end (ap);
+      mazedatasize += needed - 1;
+   }
+   /**
     * Generates OpenSCAD code to render text on the puzzle box.
     * Handles text sizing, positioning, font selection, and emoji support.
     * 
@@ -963,6 +991,112 @@ main (int argc, const char *argv[])
                while (Y && (maze[X][Y] & FLAGI))
                   maze[X][Y--] |= FLAGU + FLAGD;
                maze[X][Y] += FLAGU;
+            }
+
+            // Output maze visualization
+            fprintf (out, "//\n");
+            fprintf (out, "// ============ MAZE VISUALIZATION (%s, %dx%d) ============\n", inside ? "INSIDE" : "OUTSIDE", W, H);
+            fprintf (out, "//\n");
+            fprintf (out, "// Human-readable maze (viewed from outside, unwrapped):\n");
+            fprintf (out, "// Legend: . = cell, - = horizontal path, | = vertical path, # = invalid, E = exit\n");
+            fprintf (out, "//\n");
+            
+            // Store in buffer for STL
+            if (stl)
+            {
+               appendmazedata ("\n");
+               appendmazedata ("============ MAZE VISUALIZATION (%s, %dx%d) ============\n", inside ? "INSIDE" : "OUTSIDE", W, H);
+               appendmazedata ("\n");
+               appendmazedata ("Human-readable maze (viewed from outside, unwrapped):\n");
+               appendmazedata ("Legend: . = cell, - = horizontal path, | = vertical path, # = invalid, E = exit\n");
+               appendmazedata ("\n");
+            }
+            
+            // Human-readable ASCII visualization
+            for (Y = H - 1; Y >= 0; Y--)
+            {
+               fprintf (out, "// ");
+               if (stl)
+                  appendmazedata (" ");
+               for (X = 0; X < W; X++)
+               {
+                  char c;
+                  if (maze[X][Y] & FLAGI)
+                     c = '#';
+                  else if (X == maxx && Y == H - 1)
+                     c = 'E';
+                  else
+                     c = '.';
+                  fprintf (out, "%c", c);
+                  if (stl)
+                     appendmazedata ("%c", c);
+                  if (X < W - 1)
+                  {
+                     const char *s = (maze[X][Y] & FLAGR) ? "-" : " ";
+                     fprintf (out, "%s", s);
+                     if (stl)
+                        appendmazedata ("%s", s);
+                  }
+               }
+               fprintf (out, "\n");
+               if (stl)
+                  appendmazedata ("\n");
+               if (Y > 0)
+               {
+                  fprintf (out, "// ");
+                  if (stl)
+                     appendmazedata (" ");
+                  for (X = 0; X < W; X++)
+                  {
+                     const char *s = (maze[X][Y] & FLAGD) ? "|" : " ";
+                     fprintf (out, "%s ", s);
+                     if (stl)
+                        appendmazedata ("%s ", s);
+                  }
+                  fprintf (out, "\n");
+                  if (stl)
+                     appendmazedata ("\n");
+               }
+            }
+            fprintf (out, "//\n");
+            if (stl)
+               appendmazedata ("\n");
+            
+            // Machine-readable format
+            fprintf (out, "// Machine-readable maze data:\n");
+            fprintf (out, "// MAZE_START %s %d %d %d %d\n", inside ? "INSIDE" : "OUTSIDE", W, H, maxx, helix);
+            if (stl)
+            {
+               appendmazedata ("Machine-readable maze data:\n");
+               appendmazedata ("MAZE_START %s %d %d %d %d\n", inside ? "INSIDE" : "OUTSIDE", W, H, maxx, helix);
+            }
+            for (Y = 0; Y < H; Y++)
+            {
+               fprintf (out, "// MAZE_ROW %d ", Y);
+               if (stl)
+                  appendmazedata ("MAZE_ROW %d ", Y);
+               for (X = 0; X < W; X++)
+               {
+                  fprintf (out, "%02X", maze[X][Y]);
+                  if (stl)
+                     appendmazedata ("%02X", maze[X][Y]);
+                  if (X < W - 1)
+                  {
+                     fprintf (out, " ");
+                     if (stl)
+                        appendmazedata (" ");
+                  }
+               }
+               fprintf (out, "\n");
+               if (stl)
+                  appendmazedata ("\n");
+            }
+            fprintf (out, "// MAZE_END\n");
+            fprintf (out, "//\n");
+            if (stl)
+            {
+               appendmazedata ("MAZE_END\n");
+               appendmazedata ("\n");
             }
 
             int MAXY = height / (mazestep / 4) + 10;
@@ -1559,6 +1693,74 @@ main (int argc, const char *argv[])
             write (STDOUT_FILENO, buf, l);
          close (i);
       }
+      
+      // Create metadata file with command line parameters and maze data
+      if (outfile && mazedata && mazedatasize > 0)
+      {
+         char *metafile = NULL;
+         if (asprintf (&metafile, "%s.meta", outfile) < 0)
+            err (1, "Failed to create metadata filename");
+         
+         FILE *meta = fopen (metafile, "w");
+         if (meta)
+         {
+            fprintf (meta, "Puzzlebox Metadata\n");
+            fprintf (meta, "==================\n\n");
+            fprintf (meta, "Generated by: puzzlebox (RevK)\n");
+            fprintf (meta, "GitHub: https://github.com/revk/PuzzleBox\n\n");
+            
+            // Timestamp
+            time_t now = time (0);
+            struct tm t;
+            gmtime_r (&now, &t);
+            fprintf (meta, "Created: %04d-%02d-%02dT%02d:%02d:%02dZ\n\n",
+                     t.tm_year + 1900, t.tm_mon + 1, t.tm_mday, t.tm_hour, t.tm_min, t.tm_sec);
+            
+            // Command line parameters
+            fprintf (meta, "Command Line Parameters\n");
+            fprintf (meta, "-----------------------\n");
+            int o;
+            for (o = 0; optionsTable[o].longName; o++)
+               if (optionsTable[o].shortName && optionsTable[o].arg)
+                  switch (optionsTable[o].argInfo & POPT_ARG_MASK)
+                  {
+                  case POPT_ARG_NONE:
+                     if (*(int *) optionsTable[o].arg)
+                        fprintf (meta, "%s: enabled\n", optionsTable[o].descrip);
+                     break;
+                  case POPT_ARG_INT:
+                     {
+                        int v = *(int *) optionsTable[o].arg;
+                        if (v)
+                           fprintf (meta, "%s: %d\n", optionsTable[o].descrip, v);
+                     }
+                     break;
+                  case POPT_ARG_DOUBLE:
+                     {
+                        double v = *(double *) optionsTable[o].arg;
+                        if (v)
+                           fprintf (meta, "%s: %g\n", optionsTable[o].descrip, v);
+                     }
+                     break;
+                  case POPT_ARG_STRING:
+                     {
+                        char *v = *(char * *) optionsTable[o].arg;
+                        if (v && *v)
+                           fprintf (meta, "%s: %s\n", optionsTable[o].descrip, v);
+                     }
+                     break;
+                  }
+            fprintf (meta, "\n");
+            
+            // Maze data
+            fprintf (meta, "\n");
+            fwrite (mazedata, 1, mazedatasize, meta);
+            fclose (meta);
+         }
+         free (metafile);
+      }
    }
+   if (mazedata)
+      free (mazedata);
    return 0;
 }
