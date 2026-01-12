@@ -37,6 +37,15 @@
 #define	SCALEI "0.001"
 #define	scaled(x)	((long long)round((x)*SCALE))
 
+/**
+ * Main entry point for the puzzle box generator.
+ * Parses command line arguments, validates parameters, generates OpenSCAD code
+ * for 3D-printable cylindrical maze puzzle boxes, and optionally converts to STL.
+ * 
+ * @param argc Number of command line arguments
+ * @param argv Array of command line argument strings
+ * @return 0 on success, 1 on error
+ */
 int
 main (int argc, const char *argv[])
 {
@@ -367,6 +376,13 @@ main (int argc, const char *argv[])
    }
 
    // Sanity checks and adjustments
+   /**
+    * Normalizes text input by replacing double quotes with single quotes.
+    * Used to sanitize user-provided text for safe inclusion in OpenSCAD output.
+    * 
+    * @param t Input text string to normalize
+    * @return Normalized text string, or NULL if input is NULL or empty
+    */
    char *normalise (char *t)
    {                            // Simple text normalise
       if (!t || !*t)
@@ -559,6 +575,15 @@ main (int argc, const char *argv[])
             (out,
              "module logo(w=100,white=0,$fn=100){scale(w/100){if(!white)difference(){circle(d=100.5);circle(d=99.5);}difference(){if(white)circle(d=100);difference(){circle(d=92);for(m=[0,1])mirror([m,0,0]){difference(){translate([24,0,0])circle(r=22.5);translate([24,0,0])circle(r=15);}polygon([[1.5,22],[9,22],[9,-18.5],[1.5,-22]]);}}}}} // A&A Logo is copyright (c) 2013 and trademark Andrews & Arnold Ltd\n");
    }
+   /**
+    * Generates OpenSCAD code to render text on the puzzle box.
+    * Handles text sizing, positioning, font selection, and emoji support.
+    * 
+    * @param s Text size/scale
+    * @param t Text string to render
+    * @param f Font name (optional, can be NULL)
+    * @param outset If true, text is raised; if false, text is embossed
+    */
    void cuttext (double s, char *t, char *f, int outset)
    {
       if (outset)
@@ -583,6 +608,14 @@ main (int argc, const char *argv[])
       y = 0;
    int sq = sqrt (parts) + 0.5,
       n = sq * sq - parts;
+   /**
+    * Generates OpenSCAD code for a single part of the puzzle box.
+    * Creates the cylindrical structure, maze patterns, nubs, text, and logos.
+    * Handles both inside and outside maze configurations.
+    * 
+    * @param part Part number to generate (1-based indexing)
+    * @return 0 on success
+    */
    int box (int part)
    {                            // Make the box - part 1 in inside
       int N,
@@ -651,6 +684,14 @@ main (int argc, const char *argv[])
       if (part > 1)
          height -= baseheight;  // base from previous unit is added to this
       // Output
+      /**
+       * Generates a cylindrical maze pattern on the inside or outside of a part.
+       * Creates a random maze using recursive backtracking algorithm, applies helix
+       * transformation, and outputs OpenSCAD polyhedron geometry.
+       * 
+       * @param r Radius at which to generate the maze
+       * @param inside If 1, maze is on inside surface; if 0, maze is on outside surface
+       */
       void makemaze (double r, int inside)
       {                         // Make the maze
          W = ((int) ((r + (inside ? mazethickness : -mazethickness)) * 2 * M_PI / mazestep)) / nubs * nubs;     // Update W for actual maze
@@ -676,6 +717,15 @@ main (int argc, const char *argv[])
          }
          unsigned char maze[W][H];
          memset (maze, 0, sizeof (unsigned char) * W * H);
+         /**
+          * Tests if a maze cell is already in use or out of bounds.
+          * Handles wrapping around the X axis (cylindrical topology) and
+          * checking the FLAGI (invalid) flag.
+          * 
+          * @param x X coordinate (wraps around cylinder)
+          * @param y Y coordinate (height)
+          * @return 1 if cell is in use or invalid, 0 if available
+          */
          int test (int x, int y)
          {                      // Test if in use...
             while (x < 0)
@@ -1228,6 +1278,11 @@ main (int argc, const char *argv[])
       if (outersides)
          fprintf (out, "rotate([0,0,%f])", (double) 180 / outersides + (part + 1 == parts ? 180 : 0));
       fprintf (out, "{\n");
+      /**
+       * Generates a small alignment mark at position zero on the puzzle box.
+       * Used when the number of nubs doesn't evenly divide the number of outer sides,
+       * helping with proper rotational alignment during assembly.
+       */
       void mark (void)
       {                         // Marking position 0
          if (!markpos0 || part + 1 < parts)
@@ -1322,6 +1377,13 @@ main (int argc, const char *argv[])
             n++;
          }
       }
+      /**
+       * Generates text on the outer sides of the puzzle box.
+       * Text is positioned on each facet of the polygonal outer surface,
+       * and can be either embossed or raised.
+       * 
+       * @param outset If 1, text is raised outward; if 0, text is embossed inward
+       */
       void textside (int outset)
       {
          double a = 90 + (double) 180 / outersides;
@@ -1378,6 +1440,14 @@ main (int argc, const char *argv[])
          entrya = v % 360;
       }
       // Nubs
+      /**
+       * Generates the interlocking nubs that connect puzzle box parts.
+       * Creates multiple nubs around the circumference using polyhedron geometry.
+       * Nubs can be helical and have independently adjustable dimensions.
+       * 
+       * @param r Radius at which to place the nubs
+       * @param inside If 1, nubs are on inside (protruding inward); if 0, on outside (protruding outward)
+       */
       void addnub (double r, int inside)
       {
          double ri = r + (inside ? -mazethickness : mazethickness) * nubnormal;
