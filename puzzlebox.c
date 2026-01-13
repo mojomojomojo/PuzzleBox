@@ -1162,7 +1162,9 @@ main (int argc, const char *argv[])
             
             // Find solution path from entrance to exit
             char solution[W][H];  // Stores direction: 0=none, 'U'=up, 'D'=down, 'L'=left, 'R'=right, 'S'=start
+            char reachable[W][H]; // Stores which cells are reachable from entrance
             memset(solution, 0, sizeof(solution));
+            memset(reachable, 0, sizeof(reachable));
             
             // Find entrance at bottom (minY) - look for cell with passage down
             int entrance_x = -1;
@@ -1367,6 +1369,83 @@ main (int argc, const char *argv[])
                   
                   // Mark exit cell (path[0]) - it leads up and out
                   solution[path_x[0]][path_y[0]] = 'U';
+               }
+               
+               // Now mark all cells reachable from entrance (for dead end detection)
+               // Reuse the BFS queue
+               qhead = 0;
+               qtail = 0;
+               
+               queueX[qtail] = entrance_x;
+               queueY[qtail] = minY;
+               qtail++;
+               reachable[entrance_x][minY] = 1;
+               
+               while (qhead < qtail)
+               {
+                  int cx = queueX[qhead];
+                  int cy = queueY[qhead];
+                  qhead++;
+                  
+                  // Try all four directions
+                  if (maze[cx][cy] & FLAGR)
+                  {
+                     int nx = cx + 1;
+                     int ny = cy;
+                     if (nx >= W)
+                     {
+                        nx -= W;
+                        ny += helix;
+                     }
+                     if (ny >= 0 && ny < H && !reachable[nx][ny] && !(maze[nx][ny] & FLAGI))
+                     {
+                        reachable[nx][ny] = 1;
+                        queueX[qtail] = nx;
+                        queueY[qtail] = ny;
+                        qtail++;
+                     }
+                  }
+                  if (maze[cx][cy] & FLAGL)
+                  {
+                     int nx = cx - 1;
+                     int ny = cy;
+                     if (nx < 0)
+                     {
+                        nx += W;
+                        ny -= helix;
+                     }
+                     if (ny >= 0 && ny < H && !reachable[nx][ny] && !(maze[nx][ny] & FLAGI))
+                     {
+                        reachable[nx][ny] = 1;
+                        queueX[qtail] = nx;
+                        queueY[qtail] = ny;
+                        qtail++;
+                     }
+                  }
+                  if (maze[cx][cy] & FLAGU)
+                  {
+                     int nx = cx;
+                     int ny = cy + 1;
+                     if (ny >= 0 && ny < H && !reachable[nx][ny] && !(maze[nx][ny] & FLAGI))
+                     {
+                        reachable[nx][ny] = 1;
+                        queueX[qtail] = nx;
+                        queueY[qtail] = ny;
+                        qtail++;
+                     }
+                  }
+                  if (maze[cx][cy] & FLAGD)
+                  {
+                     int nx = cx;
+                     int ny = cy - 1;
+                     if (ny >= 0 && ny < H && !reachable[nx][ny] && !(maze[nx][ny] & FLAGI))
+                     {
+                        reachable[nx][ny] = 1;
+                        queueX[qtail] = nx;
+                        queueY[qtail] = ny;
+                        qtail++;
+                     }
+                  }
                }
             }
             
@@ -1645,8 +1724,16 @@ main (int argc, const char *argv[])
                            if (stl)
                               appendmazedata (" → ");
                         }
+                        else if (!reachable[X][Y - 1])
+                        {
+                           // Cell is not reachable from entrance (dead ends, isolated sections)
+                           fprintf (out, "###");
+                           if (stl)
+                              appendmazedata ("###");
+                        }
                         else
                         {
+                           // Cell is accessible but not on solution (dead ends, traps)
                            fprintf (out, "   ");
                            if (stl)
                               appendmazedata ("   ");
