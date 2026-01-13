@@ -998,7 +998,9 @@ main (int argc, const char *argv[])
             fprintf (out, "// ============ MAZE VISUALIZATION (%s, %dx%d) ============\n", inside ? "INSIDE" : "OUTSIDE", W, H);
             fprintf (out, "//\n");
             fprintf (out, "// Human-readable maze (viewed from outside, unwrapped):\n");
-            fprintf (out, "// Legend: . = cell, - = horizontal path, | = vertical path, # = invalid, E = exit\n");
+            fprintf (out, "// Legend: + = corner, - = horizontal wall, | = vertical wall, # = invalid, E = exit, space = passage\n");
+            fprintf (out, "// Note: Maze wraps horizontally (cylinder) - leftmost and rightmost edges connect\n");
+            fprintf (out, "// Note: With %d nubs, the maze pattern repeats every %d cells around the circumference\n", nubs, W / nubs);
             fprintf (out, "//\n");
             
             // Store in buffer for STL
@@ -1008,50 +1010,274 @@ main (int argc, const char *argv[])
                appendmazedata ("============ MAZE VISUALIZATION (%s, %dx%d) ============\n", inside ? "INSIDE" : "OUTSIDE", W, H);
                appendmazedata ("\n");
                appendmazedata ("Human-readable maze (viewed from outside, unwrapped):\n");
-               appendmazedata ("Legend: . = cell, - = horizontal path, | = vertical path, # = invalid, E = exit\n");
+               appendmazedata ("Legend: + = corner, - = horizontal wall, | = vertical wall, # = invalid, E = exit, space = passage\n");
+               appendmazedata ("Note: Maze wraps horizontally (cylinder) - leftmost and rightmost edges connect\n");
+               appendmazedata ("Note: With %d nubs, the maze pattern repeats every %d cells around the circumference\n", nubs, W / nubs);
                appendmazedata ("\n");
             }
             
-            // Human-readable ASCII visualization
+            // Human-readable ASCII visualization with walls
+            // First, determine the valid row range (skip rows that are all invalid)
+            int minY = 0, maxY = H - 1;
+            for (Y = 0; Y < H; Y++)
+            {
+               int all_invalid = 1;
+               for (X = 0; X < W; X++)
+               {
+                  if (!(maze[X][Y] & FLAGI))
+                  {
+                     all_invalid = 0;
+                     break;
+                  }
+               }
+               if (!all_invalid)
+               {
+                  minY = Y;
+                  break;
+               }
+            }
             for (Y = H - 1; Y >= 0; Y--)
             {
+               int all_invalid = 1;
+               for (X = 0; X < W; X++)
+               {
+                  if (!(maze[X][Y] & FLAGI))
+                  {
+                     all_invalid = 0;
+                     break;
+                  }
+               }
+               if (!all_invalid)
+               {
+                  maxY = Y;
+                  break;
+               }
+            }
+            
+            fprintf (out, "// Showing rows %d to %d (valid maze area)\n", minY, maxY);
+            if (stl)
+               appendmazedata ("Showing rows %d to %d (valid maze area)\n", minY, maxY);
+            
+            // Create a copy of maze data for visualization
+            unsigned char maze_viz[W][H];
+	    memcpy(maze_viz, maze, sizeof(unsigned char)*W*H);
+            
+            // Replicate maze data by traversing from start and copying each cell to opposite side
+            if (nubs > 1)
+            {
+               // Use a simple queue for BFS traversal
+               int queueX[W * H], queueY[W * H];
+               int qhead = 0, qtail = 0;
+               char visited[W][H];
+               memset(visited, 0, sizeof(visited));
+               
+               // Start at the entry point
+               queueX[qtail] = maxx;
+               queueY[qtail] = maxY;
+               qtail++;
+               visited[maxx][maxY] = 1;
+               
+               // Copy start cell to opposite side (rotate around Z axis only)
+               int opp_x = (maxx + W / nubs) % W;
+               int opp_y = maxY;  // Same Y position, no helix offset
+               maze_viz[opp_x][opp_y] = maze_viz[maxx][maxY];  // Copy maze data from current cell to opposite side
+               
+               while (qhead < qtail)
+               {
+                  int cx = queueX[qhead];
+                  int cy = queueY[qhead];
+                  qhead++;
+                  
+                  // Check all four directions
+                  // Right
+                  if (maze[cx][cy] & FLAGR)
+                  {
+                     int nx = (cx + 1) % W;
+                     int ny = cy;
+                     if (!visited[nx][ny])
+                     {
+                        visited[nx][ny] = 1;
+                        queueX[qtail] = nx;
+                        queueY[qtail] = ny;
+                        qtail++;
+                        // Copy to opposite side (rotate around Z axis only)
+                        int opp_x = (nx + W / nubs) % W;
+                        int opp_y = ny;  // Same Y position, no helix offset
+                        maze_viz[opp_x][opp_y] = maze_viz[nx][ny];  // Copy maze data from current cell to opposite side
+                     }
+                  }
+                  // Left
+                  if (maze[cx][cy] & FLAGL)
+                  {
+                     int nx = (cx - 1 + W) % W;
+                     int ny = cy;
+                     if (!visited[nx][ny])
+                     {
+                        visited[nx][ny] = 1;
+                        queueX[qtail] = nx;
+                        queueY[qtail] = ny;
+                        qtail++;
+                        // Copy to opposite side (rotate around Z axis only)
+                        int opp_x = (nx + W / nubs) % W;
+                        int opp_y = ny;  // Same Y position, no helix offset
+                        maze_viz[opp_x][opp_y] = maze_viz[nx][ny];  // Copy maze data from current cell to opposite side
+                     }
+                  }
+                  // Up
+                  if (maze[cx][cy] & FLAGU)
+                  {
+                     int nx = cx;
+                     int ny = (cy + 1) % H;
+                     if (!visited[nx][ny])
+                     {
+                        visited[nx][ny] = 1;
+                        queueX[qtail] = nx;
+                        queueY[qtail] = ny;
+                        qtail++;
+                        // Copy to opposite side (rotate around Z axis only)
+                        int opp_x = (nx + W / nubs) % W;
+                        int opp_y = ny;  // Same Y position, no helix offset
+                        maze_viz[opp_x][opp_y] = maze_viz[nx][ny];  // Copy maze data from current cell to opposite side
+                     }
+                  }
+                  // Down
+                  if (maze[cx][cy] & FLAGD)
+                  {
+                     int nx = cx;
+                     int ny = (cy - 1 + H) % H;
+                     if (!visited[nx][ny])
+                     {
+                        visited[nx][ny] = 1;
+                        queueX[qtail] = nx;
+                        queueY[qtail] = ny;
+                        qtail++;
+                        // Copy to opposite side (rotate around Z axis only)
+                        int opp_x = (nx + W / nubs) % W;
+                        int opp_y = ny;  // Same Y position, no helix offset
+                        maze_viz[opp_x][opp_y] = maze_viz[nx][ny];  // Copy maze data from current cell to opposite side
+                     }
+                  }
+               }
+            }
+            
+            for (Y = maxY + 1; Y >= minY; Y--)
+            {
+               // Draw horizontal walls and corners
                fprintf (out, "// ");
                if (stl)
                   appendmazedata (" ");
                for (X = 0; X < W; X++)
                {
-                  char c;
-                  if (maze[X][Y] & FLAGI)
-                     c = '#';
-                  else if (X == maxx && Y == H - 1)
-                     c = 'E';
-                  else
-                     c = '.';
-                  fprintf (out, "%c", c);
+                  fprintf (out, "+");
                   if (stl)
-                     appendmazedata ("%c", c);
-                  if (X < W - 1)
+                     appendmazedata ("+");
+                  // Draw horizontal edge between cells
+                  if (Y == maxY + 1)
                   {
-                     const char *s = (maze[X][Y] & FLAGR) ? "-" : " ";
-                     fprintf (out, "%s", s);
+                     // Top border - check if this is an exit (exits occur at multiples of W/nubs)
+                     int is_exit = 0;
+                     for (int n = 0; n < nubs; n++)
+                     {
+                        int exit_x = (maxx + n * (W / nubs)) % W;
+                        if (X == exit_x)
+                        {
+                           is_exit = 1;
+                           break;
+                        }
+                     }
+                     if (is_exit)
+                        fprintf (out, " E ");
+                     else
+                        fprintf (out, "---");
                      if (stl)
-                        appendmazedata ("%s", s);
+                     {
+                        if (is_exit)
+                           appendmazedata (" E ");
+                        else
+                           appendmazedata ("---");
+                     }
+                  }
+                  else if (Y == minY)
+                  {
+                     // Bottom border
+                     fprintf (out, "---");
+                     if (stl)
+                        appendmazedata ("---");
+                  }
+                  else
+                  {
+                     // Interior - check if there's a passage up from cell below
+                     if ((maze_viz[X][Y - 1] & FLAGU))
+                        fprintf (out, "   ");  // Passage (no wall)
+                     else
+                        fprintf (out, "---");  // Wall
+                     if (stl)
+                     {
+                        if ((maze_viz[X][Y - 1] & FLAGU))
+                           appendmazedata ("   ");
+                        else
+                           appendmazedata ("---");
+                     }
                   }
                }
-               fprintf (out, "\n");
+               fprintf (out, "+\n");
                if (stl)
-                  appendmazedata ("\n");
-               if (Y > 0)
+                  appendmazedata ("+\n");
+               
+               // Draw vertical walls and cell interiors
+               if (Y > minY)
                {
                   fprintf (out, "// ");
                   if (stl)
                      appendmazedata (" ");
+                  
                   for (X = 0; X < W; X++)
                   {
-                     const char *s = (maze[X][Y] & FLAGD) ? "|" : " ";
-                     fprintf (out, "%s ", s);
-                     if (stl)
-                        appendmazedata ("%s ", s);
+                     // Left edge - check for wrap-around from previous cell
+                     if (X == 0)
+                     {
+                        // Check if last cell (W-1) has FLAGR (connects to cell 0)
+                        if (maze_viz[W - 1][Y - 1] & FLAGR)
+                        {
+                           fprintf (out, " ");  // Passage wrapping from last to first
+                           if (stl)
+                              appendmazedata (" ");
+                        }
+                        else
+                        {
+                           fprintf (out, "|");  // Wall at left boundary
+                           if (stl)
+                              appendmazedata ("|");
+                        }
+                     }
+                     
+                     // Cell interior
+                     if (maze_viz[X][Y - 1] & FLAGI)
+                     {
+                        fprintf (out, "###");
+                        if (stl)
+                           appendmazedata ("###");
+                     }
+                     else
+                     {
+                        fprintf (out, "   ");
+                        if (stl)
+                           appendmazedata ("   ");
+                     }
+                     
+                     // Right edge - check if there's a passage to the right
+                     if (maze_viz[X][Y - 1] & FLAGR)
+                     {
+                        fprintf (out, " ");  // Passage to right
+                        if (stl)
+                           appendmazedata (" ");
+                     }
+                     else
+                     {
+                        fprintf (out, "|");  // Wall to right
+                        if (stl)
+                           appendmazedata ("|");
+                     }
                   }
                   fprintf (out, "\n");
                   if (stl)
@@ -1064,22 +1290,22 @@ main (int argc, const char *argv[])
             
             // Machine-readable format
             fprintf (out, "// Machine-readable maze data:\n");
-            fprintf (out, "// MAZE_START %s %d %d %d %d\n", inside ? "INSIDE" : "OUTSIDE", W, H, maxx, helix);
+            fprintf (out, "// MAZE_START %s %d %d %d %d %d %d\n", inside ? "INSIDE" : "OUTSIDE", W, maxY - minY + 1, maxx, helix, minY, maxY);
             if (stl)
             {
                appendmazedata ("Machine-readable maze data:\n");
-               appendmazedata ("MAZE_START %s %d %d %d %d\n", inside ? "INSIDE" : "OUTSIDE", W, H, maxx, helix);
+               appendmazedata ("MAZE_START %s %d %d %d %d %d %d\n", inside ? "INSIDE" : "OUTSIDE", W, maxY - minY + 1, maxx, helix, minY, maxY);
             }
-            for (Y = 0; Y < H; Y++)
+            for (Y = minY; Y <= maxY; Y++)
             {
                fprintf (out, "// MAZE_ROW %d ", Y);
                if (stl)
                   appendmazedata ("MAZE_ROW %d ", Y);
                for (X = 0; X < W; X++)
                {
-                  fprintf (out, "%02X", maze[X][Y]);
+                  fprintf (out, "%02X", maze_viz[X][Y]);
                   if (stl)
-                     appendmazedata ("%02X", maze[X][Y]);
+                     appendmazedata ("%02X", maze_viz[X][Y]);
                   if (X < W - 1)
                   {
                      fprintf (out, " ");
