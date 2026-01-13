@@ -1160,6 +1160,216 @@ main (int argc, const char *argv[])
                }
             }
             
+            // Find solution path from entrance to exit
+            char solution[W][H];  // Stores direction: 0=none, 'U'=up, 'D'=down, 'L'=left, 'R'=right, 'S'=start
+            memset(solution, 0, sizeof(solution));
+            
+            // Find entrance at bottom (minY) - look for cell with passage down
+            int entrance_x = -1;
+            for (X = 0; X < W / nubs; X++)  // Only search first sector
+            {
+               if (!(maze[X][minY] & FLAGI))
+               {
+                  entrance_x = X;
+                  break;
+               }
+            }
+            
+            if (entrance_x >= 0)
+            {
+               // BFS to find path from entrance to exit
+               int queueX[W * H], queueY[W * H];
+               int parentX[W][H], parentY[W][H];
+               int qhead = 0, qtail = 0;
+               char visited[W][H];
+               memset(visited, 0, sizeof(visited));
+               memset(parentX, -1, sizeof(parentX));
+               memset(parentY, -1, sizeof(parentY));
+               
+               queueX[qtail] = entrance_x;
+               queueY[qtail] = minY;
+               qtail++;
+               visited[entrance_x][minY] = 1;
+               parentX[entrance_x][minY] = entrance_x;
+               parentY[entrance_x][minY] = minY;
+               
+               int found = 0;
+               while (qhead < qtail && !found)
+               {
+                  int cx = queueX[qhead];
+                  int cy = queueY[qhead];
+                  qhead++;
+                  
+                  if (cx == maxx && cy == maxY)
+                  {
+                     found = 1;
+                     break;
+                  }
+                  
+                  // Try all four directions
+                  if (maze[cx][cy] & FLAGR)
+                  {
+                     int nx = cx + 1;
+                     int ny = cy;
+                     if (nx >= W)
+                     {
+                        nx -= W;
+                        ny += helix;
+                     }
+                     if (ny >= 0 && ny < H && !visited[nx][ny] && !(maze[nx][ny] & FLAGI))
+                     {
+                        visited[nx][ny] = 1;
+                        parentX[nx][ny] = cx;
+                        parentY[nx][ny] = cy;
+                        queueX[qtail] = nx;
+                        queueY[qtail] = ny;
+                        qtail++;
+                     }
+                  }
+                  if (maze[cx][cy] & FLAGL)
+                  {
+                     int nx = cx - 1;
+                     int ny = cy;
+                     if (nx < 0)
+                     {
+                        nx += W;
+                        ny -= helix;
+                     }
+                     if (ny >= 0 && ny < H && !visited[nx][ny] && !(maze[nx][ny] & FLAGI))
+                     {
+                        visited[nx][ny] = 1;
+                        parentX[nx][ny] = cx;
+                        parentY[nx][ny] = cy;
+                        queueX[qtail] = nx;
+                        queueY[qtail] = ny;
+                        qtail++;
+                     }
+                  }
+                  if (maze[cx][cy] & FLAGU)
+                  {
+                     int nx = cx;
+                     int ny = (cy + 1) % H;
+                     if (!visited[nx][ny] && !(maze[nx][ny] & FLAGI))
+                     {
+                        visited[nx][ny] = 1;
+                        parentX[nx][ny] = cx;
+                        parentY[nx][ny] = cy;
+                        queueX[qtail] = nx;
+                        queueY[qtail] = ny;
+                        qtail++;
+                     }
+                  }
+                  if (maze[cx][cy] & FLAGD)
+                  {
+                     int nx = cx;
+                     int ny = (cy - 1 + H) % H;
+                     if (!visited[nx][ny] && !(maze[nx][ny] & FLAGI))
+                     {
+                        visited[nx][ny] = 1;
+                        parentX[nx][ny] = cx;
+                        parentY[nx][ny] = cy;
+                        queueX[qtail] = nx;
+                        queueY[qtail] = ny;
+                        qtail++;
+                     }
+                  }
+               }
+               
+               // Trace back from exit to entrance to mark solution path
+               if (found)
+               {
+                  // Build path from entrance to exit by following parents backward
+                  int path_x[W * H], path_y[W * H];
+                  int path_len = 0;
+                  
+                  int cx = maxx;
+                  int cy = maxY;
+                  
+                  // Trace back to build path array
+                  while (1)
+                  {
+                     path_x[path_len] = cx;
+                     path_y[path_len] = cy;
+                     path_len++;
+                     
+                     if (cx == entrance_x && cy == minY)
+                        break;
+                     
+                     int px = parentX[cx][cy];
+                     int py = parentY[cx][cy];
+                     cx = px;
+                     cy = py;
+                  }
+                  
+                  // Now mark cells with arrows pointing toward exit
+                  // path[path_len-1] is entrance, path[0] is exit
+                  solution[path_x[path_len-1]][path_y[path_len-1]] = 'S';  // Mark start
+                  
+                  // Mark each cell on the path with arrow pointing toward exit
+                  for (int i = path_len - 2; i > 0; i--)
+                  {
+                     int curr_x = path_x[i];
+                     int curr_y = path_y[i];
+                     int next_x = path_x[i-1];  // Cell closer to exit
+                     int next_y = path_y[i-1];
+                     
+                     // Determine direction from current to next (toward exit)
+                     // Handle helix wrapping - movement can be diagonal when wrapping
+                     int dx = (next_x - curr_x + W) % W;
+                     int dy = next_y - curr_y;
+                     
+                     // Determine primary direction
+                     if (dx == 0 && dy != 0)
+                     {
+                        // Pure vertical movement
+                        if (dy > 0)
+                           solution[curr_x][curr_y] = 'U';
+                        else
+                           solution[curr_x][curr_y] = 'D';
+                     }
+                     else if (dy == 0 && dx != 0)
+                     {
+                        // Pure horizontal movement
+                        if (dx == 1)
+                           solution[curr_x][curr_y] = 'R';
+                        else if (dx == W - 1)
+                           solution[curr_x][curr_y] = 'L';
+                        else
+                           solution[curr_x][curr_y] = '?';  // Shouldn't happen
+                     }
+                     else if (dx != 0 && dy != 0)
+                     {
+                        // Diagonal movement (due to helix wrapping)
+                        // Choose primary direction based on which is more significant
+                        if (dx == 1 || dx == W - 1)
+                        {
+                           // Horizontal wrap with vertical adjustment
+                           if (dx == 1)
+                              solution[curr_x][curr_y] = 'R';
+                           else
+                              solution[curr_x][curr_y] = 'L';
+                        }
+                        else
+                        {
+                           // Shouldn't happen - use vertical
+                           if (dy > 0)
+                              solution[curr_x][curr_y] = 'U';
+                           else
+                              solution[curr_x][curr_y] = 'D';
+                        }
+                     }
+                     else
+                     {
+                        // No movement? Shouldn't happen
+                        solution[curr_x][curr_y] = '?';
+                     }
+                  }
+                  
+                  // Mark exit cell (path[0]) - it leads up and out
+                  solution[path_x[0]][path_y[0]] = 'U';
+               }
+            }
+            
             for (Y = maxY + 1; Y >= minY; Y--)
             {
                // Draw horizontal walls and corners
@@ -1263,6 +1473,184 @@ main (int argc, const char *argv[])
                         fprintf (out, "   ");
                         if (stl)
                            appendmazedata ("   ");
+                     }
+                     
+                     // Right edge - check if there's a passage to the right
+                     if (maze_viz[X][Y - 1] & FLAGR)
+                     {
+                        fprintf (out, " ");  // Passage to right
+                        if (stl)
+                           appendmazedata (" ");
+                     }
+                     else
+                     {
+                        fprintf (out, "|");  // Wall to right
+                        if (stl)
+                           appendmazedata ("|");
+                     }
+                  }
+                  fprintf (out, "\n");
+                  if (stl)
+                     appendmazedata ("\n");
+               }
+            }
+            fprintf (out, "//\n");
+            if (stl)
+               appendmazedata ("\n");
+            
+            // Second visualization with solution
+            fprintf (out, "//\n");
+            fprintf (out, "// ============ MAZE WITH SOLUTION ============\n");
+            fprintf (out, "//\n");
+            fprintf (out, "// Legend: S = start, arrows (↑↓←→) show path to exit\n");
+            fprintf (out, "//\n");
+            if (stl)
+            {
+               appendmazedata ("\n");
+               appendmazedata ("============ MAZE WITH SOLUTION ============\n");
+               appendmazedata ("\n");
+               appendmazedata ("Legend: S = start, arrows (↑↓←→) show path to exit\n");
+               appendmazedata ("\n");
+            }
+            
+            for (Y = maxY + 1; Y >= minY; Y--)
+            {
+               // Draw horizontal walls and corners
+               fprintf (out, "// ");
+               if (stl)
+                  appendmazedata (" ");
+               for (X = 0; X < W; X++)
+               {
+                  fprintf (out, "+");
+                  if (stl)
+                     appendmazedata ("+");
+                  // Draw horizontal edge between cells
+                  if (Y == maxY + 1)
+                  {
+                     // Top border - check if this is an exit (exits occur at multiples of W/nubs)
+                     int is_exit = 0;
+                     for (int n = 0; n < nubs; n++)
+                     {
+                        int exit_x = (maxx + n * (W / nubs)) % W;
+                        if (X == exit_x)
+                        {
+                           is_exit = 1;
+                           break;
+                        }
+                     }
+                     if (is_exit)
+                        fprintf (out, " E ");
+                     else
+                        fprintf (out, "---");
+                     if (stl)
+                     {
+                        if (is_exit)
+                           appendmazedata (" E ");
+                        else
+                           appendmazedata ("---");
+                     }
+                  }
+                  else if (Y == minY)
+                  {
+                     // Bottom border
+                     fprintf (out, "---");
+                     if (stl)
+                        appendmazedata ("---");
+                  }
+                  else
+                  {
+                     // Interior - check if there's a passage up from cell below
+                     if ((maze_viz[X][Y - 1] & FLAGU))
+                        fprintf (out, "   ");  // Passage (no wall)
+                     else
+                        fprintf (out, "---");  // Wall
+                     if (stl)
+                     {
+                        if ((maze_viz[X][Y - 1] & FLAGU))
+                           appendmazedata ("   ");
+                        else
+                           appendmazedata ("---");
+                     }
+                  }
+               }
+               fprintf (out, "+\n");
+               if (stl)
+                  appendmazedata ("+\n");
+               
+               // Draw vertical walls and cell interiors with solution
+               if (Y > minY)
+               {
+                  fprintf (out, "// ");
+                  if (stl)
+                     appendmazedata (" ");
+                  
+                  for (X = 0; X < W; X++)
+                  {
+                     // Left edge - check for wrap-around from previous cell
+                     if (X == 0)
+                     {
+                        // Check if last cell (W-1) has FLAGR (connects to cell 0)
+                        if (maze_viz[W - 1][Y - 1] & FLAGR)
+                        {
+                           fprintf (out, " ");  // Passage wrapping from last to first
+                           if (stl)
+                              appendmazedata (" ");
+                        }
+                        else
+                        {
+                           fprintf (out, "|");  // Wall at left boundary
+                           if (stl)
+                              appendmazedata ("|");
+                        }
+                     }
+                     
+                     // Cell interior with solution
+                     if (maze_viz[X][Y - 1] & FLAGI)
+                     {
+                        fprintf (out, "###");
+                        if (stl)
+                           appendmazedata ("###");
+                     }
+                     else
+                     {
+                        // Check if this cell is on the solution path
+                        char sol = solution[X][Y - 1];
+                        if (sol == 'S')
+                        {
+                           fprintf (out, " S ");
+                           if (stl)
+                              appendmazedata (" S ");
+                        }
+                        else if (sol == 'U')
+                        {
+                           fprintf (out, " ↑ ");
+                           if (stl)
+                              appendmazedata (" ↑ ");
+                        }
+                        else if (sol == 'D')
+                        {
+                           fprintf (out, " ↓ ");
+                           if (stl)
+                              appendmazedata (" ↓ ");
+                        }
+                        else if (sol == 'L')
+                        {
+                           fprintf (out, " ← ");
+                           if (stl)
+                              appendmazedata (" ← ");
+                        }
+                        else if (sol == 'R')
+                        {
+                           fprintf (out, " → ");
+                           if (stl)
+                              appendmazedata (" → ");
+                        }
+                        else
+                        {
+                           fprintf (out, "   ");
+                           if (stl)
+                              appendmazedata ("   ");
+                        }
                      }
                      
                      // Right edge - check if there's a passage to the right
