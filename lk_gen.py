@@ -43,10 +43,52 @@ else:
 #   base: larger radius, slot for exit
 #   chamfer on inside, top
 
+# entry/exit is not strictly trapezoidal
+
+#
+# | Parameter | Standard  | (mm)      | Observed  | Description                 |
+# | --------: | --------: | --------: | --------: | :-------------------------- |
+# |        01 |  0.153 in |  3.886 mm |           |                             |
+# |        02 |  0.083 in |  2.108 mm |           |                             |
+# |        03 |  0.209 in |  5.308 mm |           |                             |
+# |        04 |  0.039 in |  0.991 mm |           |                             |
+# |        05 |  0.158 in |  4.013 mm |           |                             |
+# |        06 |  0.153 in |  4.013 mm |           |                             |
+# |        07 |  0.606 in | 15.392 mm |           |                             |
+# |        08 |  0.149 in |  3.785 mm |  0.175 in | nub width bottom            |
+# |        09 |  0.156 in |  3.962 mm |  0.119 in | nub height bottom           |
+# |        26 |  0.039 in |  0.991 mm |  0.041 in | nub height top              |
+# |        27 |  0.039 in |  0.991 mm |  0.054 in | nub width top               |
+# |        10 |  3.070 in | 77.978 mm |           | total height                |
+# |        11 |  0.315 in |  8.001 mm |           | base height                 |
+# |        12 |  2.756 in | 70.002 mm |           | height w/out base           |
+# |        13 |  0.929 in | 23.597 mm |           | diameter: @ maze wall       |
+# |        14 | 73.780 °  |           |           | entry V angle               |
+# |        15 |  0.108 in |  2.743 mm |           |                             |
+# |      15-Y |  0.090 in |  2.286 mm |           |                             |
+# |      15-Z | -0.060 in |  1.524 mm |           |                             |
+# |        16 |        in |        mm |           |                             |
+# |        17 |  0.642 in | 16.307 mm |           | radius to base outside      |
+# |        18 |  0.606 in | 15.392 mm |           | part #1 inside diameter     |
+# |        19 |  0.198 in |  5.029 mm |           | vertical step size          |
+# |        20 |  0.106 in |  2.692 mm |           | corner                      |
+# |      20-X |  0.040 in |  1.016 mm |           |                             |
+# |      20-Y |  0.080 in |  2.032 mm |           |                             |
+# |      20-Z |  0.050 in |  1.270 mm |           |                             |
+# |        21 |  0.158 in |  4.013 mm |  0.211 in | horiz path top-top          |
+# |        24 |  0.039 in |  0.991 mm |  0.049 in | horiz path bottom-bottom    |
+# |        23 |  0.039 in |  0.991 mm |  0.049 in | horiz wall top-top          |
+# |        30 |  0.158 in |  4.013 mm |        in | horiz wall bottom-bottom    |
+# |        22 |  0.059 in |  1.498 mm |  0.059 in | vert path bottom-bottom     |
+# |        29 |  0.148 in |  3.759 mm |        in | vert path top-top           |
+# |        25 |  0.058 in |  1.473 mm |  0.071 in | vert wall top-top           |
+# |        28 |  0.133 in |  3.378 mm |        in | vert wall bottom-bottom     |
+#
+
 command = [
     './puzzlebox',
     '--parts', 4,            # 5 parts, 4 mazes
-    '--part', 1,             # which part? (0:all, 1:innermost, ..., <n>:outer)
+    '--part', 2,             # which part? (0:all, 1:innermost, ..., <n>:outer)
     '--core-diameter', 15,   # size of empty space in smallest
     '--core-height', 75,     # height of the innermost piece
     '--nubs', 2,             # count of nubs (2,3)
