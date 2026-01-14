@@ -87,8 +87,8 @@ else:
 
 command = [
     './puzzlebox',
-    '--parts', 4,            # 5 parts, 4 mazes
-    '--part', 2,             # which part? (0:all, 1:innermost, ..., <n>:outer)
+    '--parts', 5,            # 5 parts, 4 mazes
+    '--part', 4,             # which part? (0:all, 1:innermost, ..., <n>:outer)
     '--core-diameter', 15,   # size of empty space in smallest
     '--core-height', 75,     # height of the innermost piece
     '--nubs', 2,             # count of nubs (2,3)
@@ -103,7 +103,7 @@ command = [
 
     '--helix', 0,            # non-helical (no slope to maze path?)
     '--part-thickness', 2,   # wall thickness (mm) (wall of the cylinder, not the maze)
-    '--park-thickness', 2,   # thickness of park ridge to click closed (mm)
+    '--park-thickness', .5,   # thickness of park ridge to click closed (mm)
     '--maze-thickness', 2,   # maze thickness (mm); the height of the maze walls
     '--maze-step', 5,        # maze spacing (mm); the (centerline) distance between one cell and the next
     '--maze-margin', 1,      # maze top margin (mm)
