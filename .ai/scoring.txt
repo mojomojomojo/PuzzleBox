@@ -1,0 +1,40 @@
+Add a method of Maze, find_solution, that finds the shortest path from one start point to the nearest end point.
+The returned object should be a dict of cells. The key is the position in the maze (as a tuple: (column,row)) and the value
+is a (new) SolutionCell object.
+
+The SolutionCell will contain some analysis (but not score) data.
+
+  * exit_count: the number of ways to enter/exit the cell
+  * enter_direction: the direction (left, right, up, down) from which the cell was entered while traversing the solution
+  * exit_direction: the direction (left, right, up, down) traveled when exiting the cell while traversing the solution
+  * options: a dict of directions (left, right, up, down) that are possible exits from the cell, excluding the direction from which the cell was entered while traversing the solution
+    * the key is the direction
+    * the value is a dict of attributes
+      * location: a tuple indicating the cell's location
+      * cell_count: the total number of cells that can be reached by traveling in that direction (whether or not it's in the solution)
+      * in_solution: whether or not that cell is in the solution
+  * has_options: true if `options` has more than one item, false otherwise
+  * straight: true if the exit is in the opposite direction as the entrance (i.e. not a turn)
+
+Add another analysis function, evaluate_turn, that evaluates a SolutionCell. It returns a numerical score.
+  * The score starts at zero.
+  * If the exit_direction is down, add .25 to the score.
+  * If the turn happens at a corner (where there isn't really an option as to which way to go), return the current score.
+  * If the turn does not happen at a corner, evaluate each option.
+    * down
+      * If the exit_direction is down, add .25 to the score.
+      * Otherwise, subtract 0.1 * cell count of that direction.
+    * up
+      * If the exit_direction is not up, add .5 to the score.
+        * If the up cell_count is > 4, add .5 to the score.
+        * If the up cell_count is > 8, add .5 to the score.
+    * left, right
+      * If the exit_direction is up or down, do not add anything to the score.
+      * Otherwise
+        * If if this option is the exit_direction, add .5 to the score.
+	* Otherwise, add .25 to the score.
+
+Add another analysis function, evaluate_all_turns, that evaluates all SolutionCell objects for which `has_options` is true.
+  * The first two turns of the solution are always the same. Don't consider them, regardless of their attributes.
+  * Get the score from evaluate_turn for that cell.
+  * Add all the scores together and return the result.
