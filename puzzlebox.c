@@ -395,7 +395,7 @@ main (int argc, const char *argv[])
       while (*t)
       {
          if (*t == '"')
-            *t == '\'';
+            *t = '\'';
          t++;
       }
       return text;

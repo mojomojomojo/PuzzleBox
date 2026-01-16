@@ -4,7 +4,6 @@ import sys, os, os.path, subprocess, datetime, argparse, multiprocessing, iterto
 
 def gen_puzzle( args ):
     index, complexity = args
-
     for part in range(1,6):
         outfile = f'{out_dir}/maze.part-{part:02d}.cplx-{complexity:02d}.{index:03d}.scad'
         command = [
