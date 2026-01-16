@@ -2058,6 +2058,7 @@ main (int argc, const char *argv[])
             fprintf (out, ");\n");
             if (parkthickness)
             {                   // Park ridge
+	      fprintf (out, "// PARK thickness\n"); // DEBUG
                if (inside && mirrorinside)
                   fprintf (out, "mirror([1,0,0])");
                fprintf (out, "polyhedron(points=[");
@@ -2285,6 +2286,7 @@ main (int argc, const char *argv[])
        */
       void addnub (double r, int inside)
       {
+	fprintf(out, "// NUB (%.6f) inside?(%d)\n", r, inside);
          double ri = r + (inside ? -mazethickness : mazethickness) * nubnormal;
          int W = ((int) ((ri + (inside ? -clearance : clearance)) * 2 * M_PI / mazestep)) / nubs * nubs;
          double da = (double) 2 * M_PI / W / 4 * nubhorizontal; // x angle per 1/4 maze step (scaled by nubhorizontal)
