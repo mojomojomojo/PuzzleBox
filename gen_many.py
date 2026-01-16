@@ -4,7 +4,7 @@ import sys, os, os.path, subprocess, datetime, argparse, multiprocessing, iterto
 
 def gen_puzzle( args ):
     index, complexity = args
-    outfile = f'{out_dir}/maze.cplx-{complexity:02d}.{index:03d}.stl'
+    outfile = f'{out_dir}/maze.cplx-{complexity:02d}.{index:03d}.scad'
 
     command = [
         './puzzlebox',
@@ -32,7 +32,7 @@ def gen_puzzle( args ):
         '--maze-margin', 1,      # maze top margin (mm)
         '--outer-sides', 0,      # side count (0: round)
 
-        '--stl',
+        #'--stl',
         '--out-file', outfile,
     ]        
 
@@ -53,7 +53,7 @@ if __name__ == '__main__':
         os.makedirs(out_dir)
 
     count = 50
-    complexities = [ 0, 2, 7, 10 ]
+    complexities = [ 7 ]
 
     with multiprocessing.Pool(11) as pool:
         pool.map(gen_puzzle, itertools.product(list(range(50)),complexities))
