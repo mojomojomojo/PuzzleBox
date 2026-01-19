@@ -1168,6 +1168,7 @@ main (int argc, const char *argv[])
             
             // Find entrance at bottom (minY) - look for cell with passage down
             int entrance_x = -1;
+	    int _exit_x = -1;
             for (X = 0; X < W / nubs; X++)  // Only search first sector
             {
                if (!(maze[X][minY] & FLAGI))
@@ -1306,6 +1307,7 @@ main (int argc, const char *argv[])
                   // Now mark cells with arrows pointing toward exit
                   // path[path_len-1] is entrance, path[0] is exit
                   solution[path_x[path_len-1]][path_y[path_len-1]] = 'S';  // Mark start
+		  _exit_x = path_x[0];
                   
                   // Mark each cell on the path with arrow pointing toward exit
                   for (int i = path_len - 2; i > 0; i--)
@@ -1765,11 +1767,11 @@ main (int argc, const char *argv[])
             
             // Machine-readable format
             fprintf (out, "// Machine-readable maze data:\n");
-            fprintf (out, "// MAZE_START %s %d %d %d %d %d %d\n", inside ? "INSIDE" : "OUTSIDE", W, maxY - minY + 1, maxx, helix, minY, maxY);
+            fprintf (out, "// MAZE_START %s %d %d %d %d %d %d %d %d\n", inside ? "INSIDE" : "OUTSIDE", W, maxY - minY + 1, maxx, helix, minY, maxY, entrance_x, _exit_x);
             if (stl)
             {
                appendmazedata ("Machine-readable maze data:\n");
-               appendmazedata ("MAZE_START %s %d %d %d %d %d %d\n", inside ? "INSIDE" : "OUTSIDE", W, maxY - minY + 1, maxx, helix, minY, maxY);
+               appendmazedata ("MAZE_START %s %d %d %d %d %d %d %d %d\n", inside ? "INSIDE" : "OUTSIDE", W, maxY - minY + 1, maxx, helix, minY, maxY, entrance_x, _exit_x);
             }
             for (Y = minY; Y <= maxY; Y++)
             {
