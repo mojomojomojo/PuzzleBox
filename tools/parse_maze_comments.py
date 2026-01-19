@@ -30,9 +30,12 @@ class SolutionCell:
         self.has_options = has_options
         self.straight = straight
 
+    def __str__(self):
+        return f'X({self.exit_count}) Enter({self.enter_direction}) Exit({self.exit_direction}) options(?{self.has_options})({self.options}) straight({self.straight})'
+
 
 class Maze:
-    def __init__(self, width: int, height: int, orientation: str, miny: int, maxy: int, part: Optional[int] = None, part_text: Optional[str] = None):
+    def __init__(self, width: int, height: int, orientation: str, miny: int, maxy: int, entrance_x: int, exit_x:int, part: Optional[int] = None, part_text: Optional[str] = None):
         """Create a Maze container.
 
         Args:
@@ -41,6 +44,8 @@ class Maze:
             orientation: 'INSIDE' or 'OUTSIDE' marker from the source.
             miny: the minimum Y row number used in MAZE_ROW lines.
             maxy: the maximum Y row number used in MAZE_ROW lines.
+            entrance_x: the X position of the first entrance to the maze
+            exit_x: the X position of the corresponding exit to the maze
             part: optional part number parsed from the preceding comment.
             part_text: optional textual description of the part line.
 
@@ -53,6 +58,8 @@ class Maze:
         self.orientation = orientation
         self.miny = miny
         self.maxy = maxy
+        self.starts = [ (entrance_x,0), ((entrance_x + self.W//2) % self.W,0) ]
+        self.exits = [ (exit_x,self.H-1), ((exit_x + self.W//2) % self.W, self.H-1) ]
         self.part = part
         self.part_text = part_text
         # grid[y][x]
@@ -186,7 +193,7 @@ class Maze:
         
         # Find the left-most start (smallest col, then smallest row)
         start = min(self.starts, key=lambda p: (p[0], p[1]))  # x, then y
-        print(f"Selected start: {start}")
+        #print(f"Selected start: {start}")
         
         # BFS from start to find the accessible exit
         dist = {}  # Distance from start to each cell
@@ -196,24 +203,24 @@ class Maze:
         parent[start] = None
         found_end = None
         
-        print(self.grid)  # Debug: print the maze grid
+        #print(self.grid)  # Debug: print the maze grid
         
         while q:
-            print(f'QUEUE: {q}')  # Debug: show current queue
+            #print(f'QUEUE: {q}')  # Debug: show current queue
             x, y = q.popleft()
-            print(f'  Processing cell ({x},{y})')  # Debug: current cell
+            #print(f'  Processing cell ({x},{y})')  # Debug: current cell
             
             # Check if this is an exit
             if (x, y) in self.exits:
                 found_end = (x, y)
-                print(f'[SOLUTION] Found exit at ({x},{y})')
+                #print(f'[SOLUTION] Found exit at ({x},{y})')
                 break  # Stop at the first (only) accessible exit
             
             # Explore neighbors
             for nx, ny in self.neighbors(x, y):
-                print(f'[SOLUTION] Checking neighbor ({nx},{ny})')  # Debug
+                #print(f'[SOLUTION] Checking neighbor ({nx},{ny})')  # Debug
                 if (nx, ny) in dist:
-                    print(f'[SOLUTION] Neighbor ({nx},{ny}) already visited')  # Debug
+                    #print(f'[SOLUTION] Neighbor ({nx},{ny}) already visited')  # Debug
                     continue
                 # Mark distance and parent, add to queue
                 dist[(nx, ny)] = dist[(x, y)] + 1
@@ -223,8 +230,8 @@ class Maze:
         if not found_end:
             return {}
         
-        print(f'[SOLUTION] Distance map: {dist}')   # Debug
-        print(f'[SOLUTION] Parent map: {parent}')   # Debug
+        #print(f'[SOLUTION] Distance map: {dist}')   # Debug
+        #print(f'[SOLUTION] Parent map: {parent}')   # Debug
         
         # Reconstruct the path from end to start using parent pointers
         path = []
@@ -234,7 +241,7 @@ class Maze:
             current = parent.get(current)
         path.reverse()  # Reverse to get start-to-end order
         
-        print(f'[SOLUTION] Reconstructed path: {path}')  # Debug
+        #print(f'[SOLUTION] Reconstructed path: {path}')  # Debug
         
         # Create detailed solution dictionary with SolutionCell objects
         solution = {}
@@ -313,7 +320,7 @@ def evaluate_all_turns(solution: Dict[Tuple[int, int], SolutionCell]) -> float:
 
 
 def parse_machine_readable(lines: List[str]) -> Maze:
-    start_re = re.compile(r"MAZE_START\s+(INSIDE|OUTSIDE)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(-?\d+)\s+(-?\d+)", re.I)
+    start_re = re.compile(r"MAZE_START\s+(INSIDE|OUTSIDE)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(-?\d+)\s+(-?\d+)\s+(-?\d+)\s+(-?\d+)", re.I)
     row_re = re.compile(r"MAZE_ROW\s+(-?\d+)\s+(.+)", re.I)
 
     # locate machine-readable block start
@@ -344,7 +351,9 @@ def parse_machine_readable(lines: List[str]) -> Maze:
             # other fields currently unused: maxx, helix
             miny = int(m.group(6))
             maxy = int(m.group(7))
-            maze = Maze(W, H, orientation, miny, maxy, part=part, part_text=part_text)
+            entrance_x = int(m.group(8))
+            exit_x = int(m.group(9))
+            maze = Maze(W, H, orientation, miny, maxy, entrance_x=entrance_x, exit_x=exit_x, part=part, part_text=part_text)
             continue
 
         m2 = row_re.search(line)
@@ -369,9 +378,6 @@ def parse_machine_readable(lines: List[str]) -> Maze:
         mr_idx = None
     if mr_idx is not None:
         hr = extract_human_readable(lines, mr_idx)
-    if hr:
-        maze.starts = hr.get('starts', [])
-        maze.exits = hr.get('exits', [])
 
     maze.solution = maze.find_solution()
 
@@ -380,84 +386,84 @@ def parse_machine_readable(lines: List[str]) -> Maze:
     return maze
 
 
-def extract_human_readable(lines: List[str], mr_idx: int) -> Dict[str, Optional[object]]:
-    """Search backwards from mr_idx for human-readable maze visualization and solution blocks.
-
-    Returns dict with keys 'visualization' and 'solution' (each a list of strings or None),
-    and parsed 'starts', 'exits', and 'arrows' for the solution block.
-    """
-    viz = None
-    sol = None
-    arrows = []
-
-    def collect_block(start_i: int) -> List[str]:
-        out = []
-        i = start_i + 1
-        while i < len(lines):
-            s = lines[i].rstrip('\n')
-            if not s.strip():
-                break
-            # stop if next marker
-            low = s.lower()
-            if 'machine-readable maze data' in low or '=========== maze' in low or 'maze with solution' in low:
-                break
-            # accept commented lines starting with // or raw lines
-            if s.strip().startswith('//'):
-                out.append(s.strip()[2:].rstrip())
-            else:
-                out.append(s.rstrip())
-            i += 1
-        return out
-
-    # search backwards for visualization and solution markers within 1000 lines
-    viz = None
-    # collect backwards from mr_idx
-    out = []
-    i = mr_idx - 1
-    while i >= 0:
-        s = lines[i].rstrip('\n')
-        if not s.strip():
-            break
-        if s.strip().startswith('//'):
-            out.append(s.strip()[2:].rstrip())
-        else:
-            out.append(s.rstrip())
-        i -= 1
-    if out:
-        viz = list(reversed(out))
-    sol = None
-
-    # If solution block present, find starts 'S', exits 'E' (cell below), and arrows positions
-    starts = []
-    exits = []
-    if sol:
-        for row_idx, raw in enumerate(sol):
-            for col_idx, ch in enumerate(raw):
-                if ch == 'S':
-                    x = col_idx // 4
-                    y = row_idx
-                    starts.append((x, y))
-                elif ch == 'E':
-                    x = col_idx // 4
-                    y = row_idx + 1
-                    exits.append((x, y))
-                if ch in ('↑', '↓', '←', '→', '^', 'v', '<', '>'):
-                    arrows.append({'pos': (row_idx, col_idx), 'char': ch})
-    elif viz:
-        for row_idx, raw in enumerate(viz):
-            for col_idx, ch in enumerate(raw):
-                if ch == 'S':
-                    x = col_idx // 4
-                    y = row_idx
-                    starts.append((x, y))
-                elif ch == 'E':
-                    x = col_idx // 4
-                    y = row_idx + 1
-                    exits.append((x, y))
-                if ch in ('↑', '↓', '←', '→', '^', 'v', '<', '>'):
-                    arrows.append({'pos': (row_idx, col_idx), 'char': ch})
-
-    return {'visualization': viz, 'solution': sol, 'starts': starts, 'exits': exits, 'arrows': arrows}
+# def extract_human_readable(lines: List[str], mr_idx: int) -> Dict[str, Optional[object]]:
+#     """Search backwards from mr_idx for human-readable maze visualization and solution blocks.
+#
+#     Returns dict with keys 'visualization' and 'solution' (each a list of strings or None),
+#     and parsed 'starts', 'exits', and 'arrows' for the solution block.
+#     """
+#     viz = None
+#     sol = None
+#     arrows = []
+#
+#     def collect_block(start_i: int) -> List[str]:
+#         out = []
+#         i = start_i + 1
+#         while i < len(lines):
+#             s = lines[i].rstrip('\n')
+#             if not s.strip():
+#                 break
+#             # stop if next marker
+#             low = s.lower()
+#             if 'machine-readable maze data' in low or '=========== maze' in low or 'maze with solution' in low:
+#                 break
+#             # accept commented lines starting with // or raw lines
+#             if s.strip().startswith('//'):
+#                 out.append(s.strip()[2:].rstrip())
+#             else:
+#                 out.append(s.rstrip())
+#             i += 1
+#         return out
+#
+#     # search backwards for visualization and solution markers within 1000 lines
+#     viz = None
+#     # collect backwards from mr_idx
+#     out = []
+#     i = mr_idx - 1
+#     while i >= 0:
+#         s = lines[i].rstrip('\n')
+#         if not s.strip():
+#             break
+#         if s.strip().startswith('//'):
+#             out.append(s.strip()[2:].rstrip())
+#         else:
+#             out.append(s.rstrip())
+#         i -= 1
+#     if out:
+#         viz = list(reversed(out))
+#     sol = None
+#
+#     # If solution block present, find starts 'S', exits 'E' (cell below), and arrows positions
+#     starts = []
+#     exits = []
+#     if sol:
+#         for row_idx, raw in enumerate(sol):
+#             for col_idx, ch in enumerate(raw):
+#                 if ch == 'S':
+#                     x = col_idx // 4
+#                     y = row_idx
+#                     starts.append((x, y))
+#                 elif ch == 'E':
+#                     x = col_idx // 4
+#                     y = row_idx + 1
+#                     exits.append((x, y))
+#                 if ch in ('↑', '↓', '←', '→', '^', 'v', '<', '>'):
+#                     arrows.append({'pos': (row_idx, col_idx), 'char': ch})
+#     elif viz:
+#         for row_idx, raw in enumerate(viz):
+#             for col_idx, ch in enumerate(raw):
+#                 if ch == 'S':
+#                     x = col_idx // 4
+#                     y = row_idx
+#                     starts.append((x, y))
+#                 elif ch == 'E':
+#                     x = col_idx // 4
+#                     y = row_idx + 1
+#                     exits.append((x, y))
+#                 if ch in ('↑', '↓', '←', '→', '^', 'v', '<', '>'):
+#                     arrows.append({'pos': (row_idx, col_idx), 'char': ch})
+#
+#     return {'visualization': viz, 'solution': sol, 'starts': starts, 'exits': exits, 'arrows': arrows}
 
 
 def analyze_maze(m: Maze) -> Dict:
@@ -703,22 +709,30 @@ def extract_human_readable(lines: List[str], mr_idx: int) -> Dict[str, Optional[
         return out
 
     # search backwards for visualization and solution markers within 1000 lines
-    viz = None
+    viz = []
+    sol = []
     # collect backwards from mr_idx
     out = []
     i = mr_idx - 1
+    #print(f'[XHR] mr_idx({mr_idx})')
+    
     while i >= 0:
         s = lines[i].rstrip('\n')
-        if not s.strip():
-            break
+        #print(f'[XHR] #{i} "{s}"')
         if s.strip().startswith('//'):
-            out.append(s.strip()[2:].rstrip())
-        else:
-            out.append(s.rstrip())
+            s = s.strip()[2:]
+        #if not s.strip():
+        #    break
+        out.append(s)
+
+        if 'MAZE WITH SOLUTION' in s:
+            sol = list(reversed(out))
+            out = []
+        elif 'MAZE VISUALIZATION' in s:
+            viz = list(reversed(out))
+            out = []
+
         i -= 1
-    if out:
-        viz = list(reversed(out))
-    sol = None
 
     # If solution block present, find start 'S' and arrows positions
     if sol:
@@ -875,8 +889,6 @@ def main():
     if hr:
         metrics['human_readable'] = hr
 
-    print('\n'.join(metrics['human_readable']['solution']))
-
 
     # Print concise human summary
     print(f"Parsed maze {maze.W}x{maze.H} orientation={maze.orientation}")
@@ -890,8 +902,8 @@ def main():
         metrics_json.pop('human_readable', None)
         print(json.dumps(metrics_json, indent=2))
 
-    print(maze.solution)
-    print(f'  (1,0) neighbors: {maze.neighbors(1,0)}')
+    print('\n'.join(map(lambda item: f'  {item[0]}: {item[1]}',maze.solution.items())))
+    print('\n'.join(hr['solution']))
 
 if __name__ == '__main__':
     main()
