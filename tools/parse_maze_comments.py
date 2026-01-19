@@ -22,7 +22,8 @@ FLAGI = 0x80
 
 
 class SolutionCell:
-    def __init__(self, exit_count: int, enter_direction: Optional[str], exit_direction: Optional[str], options: Dict[str, Dict], has_options: bool, straight: bool):
+    def __init__(self, location: Tuple[int,int], exit_count: int, enter_direction: Optional[str], exit_direction: Optional[str], options: Dict[str, Dict], has_options: bool, straight: bool):
+        self.location = location
         self.exit_count = exit_count
         self.enter_direction = enter_direction
         self.exit_direction = exit_direction
@@ -31,7 +32,7 @@ class SolutionCell:
         self.straight = straight
 
     def __str__(self):
-        return f'X({self.exit_count}) Enter({self.enter_direction}) Exit({self.exit_direction}) options(?{self.has_options})({self.options}) straight({self.straight})'
+        return f'{self.location}  exit_count({self.exit_count}) Enter({self.enter_direction}) Exit({self.exit_direction}) options(?{self.has_options})({self.options}) straight({self.straight})'
 
 
 class Maze:
@@ -139,14 +140,16 @@ class Maze:
         return nbrs
 
     def get_direction(self, x1, y1, x2, y2):
+        # AI gets these confused because right: x2>x1 and up: y2>y1, but the arrays are
+        #   conceived of differently.
         if x2 == (x1 + 1) % self.W and y2 == y1:
             return 'right'
         if x2 == (x1 - 1) % self.W and y2 == y1:
             return 'left'
         if x2 == x1 and y2 == y1 - 1:
-            return 'up'
-        if x2 == x1 and y2 == y1 + 1:
             return 'down'
+        if x2 == x1 and y2 == y1 + 1:
+            return 'up'
         return None
 
     def get_opposite(self, dir):
@@ -251,10 +254,12 @@ class Maze:
             exit_dir = None
             if i > 0:
                 prev = path[i-1]
-                enter_dir = self.get_direction(prev[0], prev[1], x, y)
+                enter_dir = self.get_direction(x, y, prev[0], prev[1]) # WRT this cell, which exit did we enter from?
+                #print(f'[ENTER_DIR] {prev} -> ({x}, {y}): {enter_dir}')
             if i < len(path) - 1:
                 next_ = path[i+1]
                 exit_dir = self.get_direction(x, y, next_[0], next_[1])
+                #print(f'[EXIT_DIR]  ({x}, {y}) -> {next_}: {exit_dir}')
             
             # Analyze possible directions from this cell (excluding entry)
             possible_dirs = {}
@@ -274,40 +279,60 @@ class Maze:
             straight = enter_dir and exit_dir and self.get_opposite(enter_dir) == exit_dir  # Straight path?
             exit_count = self.degree(x, y)  # Number of exits from this cell
             
-            solution[(x, y)] = SolutionCell(exit_count, enter_dir, exit_dir, possible_dirs, has_options, straight)
+            solution[(x, y)] = SolutionCell((x,y), exit_count, enter_dir, exit_dir, possible_dirs, has_options, straight)
         
         return solution
 
 
 def evaluate_turn(cell: SolutionCell) -> float:
+    print(f'\n[EVAL_TURN] {cell}')
     score = 0.0
     if cell.exit_direction == 'down':
         score += 0.25
+        print(f'  [EVAL_TURN] exit_down')
     # If corner, return current score
     if not cell.has_options:
+        print(f'  [EVAL_TURN] [SCORE] {cell.location}: {score}')
         return score
     # evaluate each option
     for dir_, attrs in cell.options.items():
+        if dir_ == cell.enter_direction:
+            # Don't evaluate the "option" where we came from.
+            continue
+
         cell_count = attrs['cell_count']
         if dir_ == 'down':
             if cell.exit_direction == 'down':
                 score += 0.25
+                print(f'  [EVAL_TURN] down is in solution')
             else:
                 score -= 0.1 * cell_count
+                print(f'  [EVAL_TURN] down is not in solution ({cell_count})')
         elif dir_ == 'up':
             if cell.exit_direction != 'up':
+                print(f'  [EVAL_TURN] up is not in solution')
                 score += 0.5
                 if cell_count > 4:
+                    print(f'  [EVAL_TURN] up/trap ({cell_count}) has > 4')
                     score += 0.5
                 if cell_count > 8:
                     score += 0.5
+                    print(f'  [EVAL_TURN] up/trap ({cell_count}) has > 8')
+            else:
+                # Is this a turn from horiz to vertical and NOT at a corner?
+                if cell.has_options and cell.enter_direction in ('left','right'):
+                    score += 1.0
+                    print(f'  [EVAL_TURN] up/soln is in the middle of L/R move')
+                    
         elif dir_ in ('left', 'right'):
             if cell.exit_direction in ('up', 'down'):
+                print(f'  [EVAL_TURN] opt_dir({dir_}) has likely unexplored L/R options')
                 continue
-            if dir_ == cell.exit_direction:
-                score += 0.5
-            else:
-                score += 0.25
+            if 'up' in cell.options:
+                if dir_ == cell.exit_direction:
+                    print(f'  [EVAL_TURN] L/R({dir_}) is in solution when U is available')
+                    score += 0.5
+    print(f'  [EVAL_TURN] [SCORE] {cell.location}: {score}')
     return score
 
 
@@ -904,6 +929,9 @@ def main():
 
     print('\n'.join(map(lambda item: f'  {item[0]}: {item[1]}',maze.solution.items())))
     print('\n'.join(hr['solution']))
+
+    print('Score: ',evaluate_all_turns(maze.solution))
+
 
 if __name__ == '__main__':
     main()
