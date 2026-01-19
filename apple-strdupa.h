@@ -10,3 +10,11 @@
 			    }))
 
 #endif // __APPLE__
+
+#ifndef __APPLE__
+/* Fallback for non-Apple platforms: map strdupa to strdup (heap allocation).
+	Note: original strdupa uses alloca; using strdup is acceptable here. */
+# include <string.h>
+# include <stdlib.h>
+# define strdupa(s) strdup(s)
+#endif
