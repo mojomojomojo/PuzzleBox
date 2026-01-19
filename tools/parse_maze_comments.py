@@ -23,6 +23,21 @@ FLAGI = 0x80
 
 class Maze:
     def __init__(self, width: int, height: int, orientation: str, miny: int, maxy: int, part: Optional[int] = None, part_text: Optional[str] = None):
+        """Create a Maze container.
+
+        Args:
+            width: number of columns (W) in the maze.
+            height: number of rows (H) in the maze.
+            orientation: 'INSIDE' or 'OUTSIDE' marker from the source.
+            miny: the minimum Y row number used in MAZE_ROW lines.
+            maxy: the maximum Y row number used in MAZE_ROW lines.
+            part: optional part number parsed from the preceding comment.
+            part_text: optional textual description of the part line.
+
+        The internal grid is stored as `grid[row][col]` with rows indexed 0..H-1
+        corresponding to MAZE_ROW numbers `miny..maxy`.
+        Each cell stores the byte flags produced by PuzzleBox (FLAGL/FLAGR/FLAGU/FLAGD/FLAGI).
+        """
         self.W = width
         self.H = height
         self.orientation = orientation
@@ -34,6 +49,15 @@ class Maze:
         self.grid: List[List[int]] = [[0] * self.W for _ in range(self.H)]
 
     def set_row(self, row_number: int, values: List[int]):
+        """Set a maze row by the original MAZE_ROW number.
+
+        Args:
+            row_number: the MAZE_ROW Y value found in the file (may be negative).
+            values: list of integer flag values (parsed from hex) of length `self.W`.
+
+        Raises IndexError if the row_number falls outside the expected range, and
+        ValueError if the provided row width does not match the maze width.
+        """
         idx = row_number - self.miny
         if idx < 0 or idx >= self.H:
             raise IndexError("Row number out of range")
@@ -42,13 +66,29 @@ class Maze:
         self.grid[idx] = values
 
     def degree(self, x: int, y: int) -> int:
+        """Return the number of open passages (degree) for cell (x, y).
+
+        Counts the direction flags (left/right/up/down) and returns a value
+        in the range 0..4. The invalid bit (FLAGI) is ignored by this method.
+        """
         v = self.grid[y][x]
         return bin(v & 0x0F).count("1")
 
     def is_invalid(self, x: int, y: int) -> bool:
+        """Return True when the `FLAGI` (invalid) bit is set for the cell.
+
+        Invalid cells are not considered usable for connectivity or scoring.
+        """
         return bool(self.grid[y][x] & FLAGI)
 
     def neighbors(self, x: int, y: int) -> List[Tuple[int, int]]:
+        """Return reachable neighbor coordinates from cell (x, y).
+
+        The returned list contains (nx, ny) tuples for each direction flag set
+        on the source cell. Horizontal movement wraps around the X axis (cylinder),
+        so left/right use modular arithmetic. Vertical moves are bounded to 0..H-1.
+        Invalid neighbor cells are not filtered here — caller should check `is_invalid`.
+        """
         nbrs = []
         v = self.grid[y][x]
         # Right
