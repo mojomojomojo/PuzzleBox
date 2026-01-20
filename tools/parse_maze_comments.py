@@ -118,25 +118,25 @@ class Maze:
             #print('    [RIGHT]')
             nx = (x + 1) % self.W
             if not self.is_invalid(nx, y):
-                nbrs.append((nx, y))
+                nbrs.append(('right', nx, y))
         # Left
         if v & FLAGL:
             #print('    [LEFT]')
             nx = (x - 1) % self.W
             if not self.is_invalid(nx, y):
-                nbrs.append((nx, y))
+                nbrs.append(('left', nx, y))
         # Up (decreasing row index)
         if v & FLAGU:
             ny = y + 1 # up is the _next_ row (in the data)
             #print(f'    [UP] ({x},{ny}) in [0, {self.H})')
             if 0 <= ny < self.H and not self.is_invalid(x, ny):
-                nbrs.append((x, ny))
+                nbrs.append(('up', x, ny))
         # Down
         if v & FLAGD:
             #print('    [DOWN]')
             ny = y - 1 # down is the _previous_ row (in the data)
             if 0 <= ny < self.H and not self.is_invalid(x, ny):
-                nbrs.append((x, ny))
+                nbrs.append(('down', x, ny))
         return nbrs
 
     def get_direction(self, x1, y1, x2, y2):
@@ -156,15 +156,19 @@ class Maze:
         opposites = {'left': 'right', 'right': 'left', 'up': 'down', 'down': 'up'}
         return opposites.get(dir)
 
-    def get_component_size(self, start_x, start_y):
+    def get_component_size(self, start_x, start_y, from_dir):
         if self.is_invalid(start_x, start_y):
             return 0
         q = deque([(start_x, start_y)])
         seen = {(start_x, start_y)}
+        # Don't include the cell that led to here.
+        for ndir,nx,ny in self.neighbors(start_x,start_y):
+            if ndir == from_dir:
+                seen.add((nx,ny))
         count = 1
         while q:
             x, y = q.popleft()
-            for nx, ny in self.neighbors(x, y):
+            for ndir, nx, ny in self.neighbors(x, y):
                 if (nx, ny) in seen:
                     continue
                 seen.add((nx, ny))
@@ -220,7 +224,7 @@ class Maze:
                 break  # Stop at the first (only) accessible exit
             
             # Explore neighbors
-            for nx, ny in self.neighbors(x, y):
+            for ndir, nx, ny in self.neighbors(x, y):
                 #print(f'[SOLUTION] Checking neighbor ({nx},{ny})')  # Debug
                 if (nx, ny) in dist:
                     #print(f'[SOLUTION] Neighbor ({nx},{ny}) already visited')  # Debug
@@ -263,10 +267,11 @@ class Maze:
             
             # Analyze possible directions from this cell (excluding entry)
             possible_dirs = {}
-            for nx, ny in self.neighbors(x, y):
+            for ndir, nx, ny in self.neighbors(x, y):
                 dir_ = self.get_direction(x, y, nx, ny)
                 if dir_ != enter_dir:  # Don't consider the direction we came from
-                    cell_count = self.get_component_size(nx, ny)  # Size of connected component
+                    cell_count = self.get_component_size(nx, ny, self.get_opposite(dir_))  # Size of connected component
+                    print(f'  ({x},{y}) -> {dir_} ({nx},{ny}): count({cell_count})')
                     in_solution = (i < len(path)-1 and (nx, ny) == path[i+1])  # Is this the solution path?
                     possible_dirs[dir_] = {
                         'location': (nx, ny),
@@ -528,7 +533,7 @@ def analyze_maze(m: Maze) -> Dict:
         while q:
             x, y = q.popleft()
             reachable += 1
-            for nx, ny in m.neighbors(x, y):
+            for ndir, nx, ny in m.neighbors(x, y):
                 if m.is_invalid(nx, ny):
                     continue
                 if (nx, ny) in seen:
@@ -808,7 +813,7 @@ def analyze_maze(m: Maze) -> Dict:
         while q:
             x, y = q.popleft()
             reachable += 1
-            for nx, ny in m.neighbors(x, y):
+            for ndir, nx, ny in m.neighbors(x, y):
                 if m.is_invalid(nx, ny):
                     continue
                 if (nx, ny) in seen:
