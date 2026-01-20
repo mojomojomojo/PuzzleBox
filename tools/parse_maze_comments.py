@@ -196,7 +196,7 @@ class Maze:
             print("No exits found")
             return {}
         
-        print(f"Starts: {self.starts}, Exits: {self.exits}")
+        #print(f"Starts: {self.starts}, Exits: {self.exits}")
         
         # Find the left-most start (smallest col, then smallest row)
         start = min(self.starts, key=lambda p: (p[0], p[1]))  # x, then y
@@ -271,7 +271,7 @@ class Maze:
                 dir_ = self.get_direction(x, y, nx, ny)
                 if dir_ != enter_dir:  # Don't consider the direction we came from
                     cell_count = self.get_component_size(nx, ny, self.get_opposite(dir_))  # Size of connected component
-                    print(f'  ({x},{y}) -> {dir_} ({nx},{ny}): count({cell_count})')
+                    #print(f'  ({x},{y}) -> {dir_} ({nx},{ny}): count({cell_count})')
                     in_solution = (i < len(path)-1 and (nx, ny) == path[i+1])  # Is this the solution path?
                     possible_dirs[dir_] = {
                         'location': (nx, ny),
@@ -290,14 +290,14 @@ class Maze:
 
 
 def evaluate_turn(cell: SolutionCell) -> float:
-    print(f'\n[EVAL_TURN] {cell}')
+    #print(f'\n[EVAL_TURN] {cell}')
     score = 0.0
     if cell.exit_direction == 'down':
         score += 0.25
-        print(f'  [EVAL_TURN] exit_down')
+        #print(f'  [EVAL_TURN] exit_down')
     # If corner, return current score
     if not cell.has_options:
-        print(f'  [EVAL_TURN] [SCORE] {cell.location}: {score}')
+        #print(f'  [EVAL_TURN] [SCORE] {cell.location}: {score}')
         return score
     # evaluate each option
     for dir_, attrs in cell.options.items():
@@ -309,45 +309,49 @@ def evaluate_turn(cell: SolutionCell) -> float:
         if dir_ == 'down':
             if cell.exit_direction == 'down':
                 score += 0.25
-                print(f'  [EVAL_TURN] down is in solution')
+                #print(f'  [EVAL_TURN] down is in solution')
             else:
-                score -= 0.1 * cell_count
-                print(f'  [EVAL_TURN] down is not in solution ({cell_count})')
+                score -= 0.05 * cell_count
+                #print(f'  [EVAL_TURN] down is not in solution ({cell_count})')
         elif dir_ == 'up':
             if cell.exit_direction != 'up':
-                print(f'  [EVAL_TURN] up is not in solution')
+                #print(f'  [EVAL_TURN] up is not in solution')
                 score += 0.5
                 if cell_count > 4:
-                    print(f'  [EVAL_TURN] up/trap ({cell_count}) has > 4')
+                    #print(f'  [EVAL_TURN] up/trap ({cell_count}) has > 4')
                     score += 0.5
                 if cell_count > 8:
                     score += 0.5
-                    print(f'  [EVAL_TURN] up/trap ({cell_count}) has > 8')
+                    #print(f'  [EVAL_TURN] up/trap ({cell_count}) has > 8')
             else:
                 # Is this a turn from horiz to vertical and NOT at a corner?
                 if cell.has_options and cell.enter_direction in ('left','right'):
                     score += 1.0
-                    print(f'  [EVAL_TURN] up/soln is in the middle of L/R move')
+                    #print(f'  [EVAL_TURN] up/soln is in the middle of L/R move')
                     
         elif dir_ in ('left', 'right'):
             if cell.exit_direction in ('up', 'down'):
-                print(f'  [EVAL_TURN] opt_dir({dir_}) has likely unexplored L/R options')
+                #print(f'  [EVAL_TURN] opt_dir({dir_}) has likely unexplored L/R options')
                 continue
             if 'up' in cell.options:
                 if dir_ == cell.exit_direction:
-                    print(f'  [EVAL_TURN] L/R({dir_}) is in solution when U is available')
+                    #print(f'  [EVAL_TURN] L/R({dir_}) is in solution when U is available')
                     score += 0.5
-    print(f'  [EVAL_TURN] [SCORE] {cell.location}: {score}')
+    #print(f'  [EVAL_TURN] [SCORE] {cell.location}: {score}')
     return score
 
 
 def evaluate_all_turns(solution: Dict[Tuple[int, int], SolutionCell]) -> float:
     cells_with_options = [cell for cell in solution.values() if cell.has_options]
-    # skip first two
+    # Skip first two: they're always the same.
     relevant_cells = cells_with_options[2:]
     total_score = sum(evaluate_turn(cell) for cell in relevant_cells)
     return total_score
 
+def score_maze( maze: Maze ) -> float:
+    score = evaluate_all_turns(maze.solution)
+    score += len(maze.solution) * .05
+    return score
 
 def parse_machine_readable(lines: List[str]) -> Maze:
     start_re = re.compile(r"MAZE_START\s+(INSIDE|OUTSIDE)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(-?\d+)\s+(-?\d+)\s+(-?\d+)\s+(-?\d+)", re.I)
@@ -414,86 +418,6 @@ def parse_machine_readable(lines: List[str]) -> Maze:
     if maze is None:
         raise RuntimeError("No MAZE_START found in machine-readable block")
     return maze
-
-
-# def extract_human_readable(lines: List[str], mr_idx: int) -> Dict[str, Optional[object]]:
-#     """Search backwards from mr_idx for human-readable maze visualization and solution blocks.
-#
-#     Returns dict with keys 'visualization' and 'solution' (each a list of strings or None),
-#     and parsed 'starts', 'exits', and 'arrows' for the solution block.
-#     """
-#     viz = None
-#     sol = None
-#     arrows = []
-#
-#     def collect_block(start_i: int) -> List[str]:
-#         out = []
-#         i = start_i + 1
-#         while i < len(lines):
-#             s = lines[i].rstrip('\n')
-#             if not s.strip():
-#                 break
-#             # stop if next marker
-#             low = s.lower()
-#             if 'machine-readable maze data' in low or '=========== maze' in low or 'maze with solution' in low:
-#                 break
-#             # accept commented lines starting with // or raw lines
-#             if s.strip().startswith('//'):
-#                 out.append(s.strip()[2:].rstrip())
-#             else:
-#                 out.append(s.rstrip())
-#             i += 1
-#         return out
-#
-#     # search backwards for visualization and solution markers within 1000 lines
-#     viz = None
-#     # collect backwards from mr_idx
-#     out = []
-#     i = mr_idx - 1
-#     while i >= 0:
-#         s = lines[i].rstrip('\n')
-#         if not s.strip():
-#             break
-#         if s.strip().startswith('//'):
-#             out.append(s.strip()[2:].rstrip())
-#         else:
-#             out.append(s.rstrip())
-#         i -= 1
-#     if out:
-#         viz = list(reversed(out))
-#     sol = None
-#
-#     # If solution block present, find starts 'S', exits 'E' (cell below), and arrows positions
-#     starts = []
-#     exits = []
-#     if sol:
-#         for row_idx, raw in enumerate(sol):
-#             for col_idx, ch in enumerate(raw):
-#                 if ch == 'S':
-#                     x = col_idx // 4
-#                     y = row_idx
-#                     starts.append((x, y))
-#                 elif ch == 'E':
-#                     x = col_idx // 4
-#                     y = row_idx + 1
-#                     exits.append((x, y))
-#                 if ch in ('↑', '↓', '←', '→', '^', 'v', '<', '>'):
-#                     arrows.append({'pos': (row_idx, col_idx), 'char': ch})
-#     elif viz:
-#         for row_idx, raw in enumerate(viz):
-#             for col_idx, ch in enumerate(raw):
-#                 if ch == 'S':
-#                     x = col_idx // 4
-#                     y = row_idx
-#                     starts.append((x, y))
-#                 elif ch == 'E':
-#                     x = col_idx // 4
-#                     y = row_idx + 1
-#                     exits.append((x, y))
-#                 if ch in ('↑', '↓', '←', '→', '^', 'v', '<', '>'):
-#                     arrows.append({'pos': (row_idx, col_idx), 'char': ch})
-#
-#     return {'visualization': viz, 'solution': sol, 'starts': starts, 'exits': exits, 'arrows': arrows}
 
 
 def analyze_maze(m: Maze) -> Dict:
@@ -881,6 +805,59 @@ def parse_weights(s: Optional[str]) -> Dict[str, float]:
         k, v = part.split('=', 1)
         weights[k.strip()] = float(v)
     return weights
+
+
+def score_file( mpath, weights ):
+    with open(mpath, 'r', encoding='utf-8', errors='ignore') as fh:
+        lines = fh.readlines()
+
+    maze = parse_machine_readable(lines)
+    
+    # extract human-readable blocks near the machine-readable data
+    try:
+        mr_idx = next((i for i, l in enumerate(lines) if 'machine-readable maze data:' in l.lower()), None)
+    except StopIteration:
+        mr_idx = None
+    hr = None
+    if mr_idx is not None:
+        hr = extract_human_readable(lines, mr_idx)
+
+    metrics = analyze_maze(maze)
+    default_weights = {"connected": 2.0, "unreachable": -5.0, "dead_end": -1.0, "branching": 1.0, "avg_degree": 1.0}
+    override = parse_weights(weights)
+    weights = {**default_weights, **override}
+    score = compute_score(metrics, weights)
+    metrics['score'] = score
+    metrics['weights_used'] = weights
+    # include part info when available
+    if getattr(maze, 'part', None) is not None:
+        metrics['part'] = maze.part
+    if getattr(maze, 'part_text', None):
+        metrics['part_text'] = maze.part_text
+    if hr:
+        metrics['human_readable'] = hr
+
+
+    # Print concise human summary
+    #print(f"Parsed maze {maze.W}x{maze.H} orientation={maze.orientation}")
+    #print(f"Usable: {metrics['usable_cells']} invalid: {metrics['invalid_cells']} largest_component: {metrics['largest_component']} unreachable: {metrics['unreachable_cells']}")
+    #print(f"Dead-ends: {metrics['dead_ends']} branching: {metrics['branching_cells']} avg_degree: {metrics['avg_degree']:.2f}")
+    #print(f"Score: {metrics['score']:.3f}")
+
+    #if args.json:
+    #    # Exclude heavy/human-only data from JSON output
+    #    metrics_json = dict(metrics)
+    #    metrics_json.pop('human_readable', None)
+    #    print(json.dumps(metrics_json, indent=2))
+
+    #print('\n'.join(map(lambda item: f'  {item[0]}: {item[1]}',maze.solution.items())))
+    #print('\n'.join(hr['solution']))
+
+    #print('Score: ',evaluate_all_turns(maze.solution))
+
+    score = evaluate_all_turns(maze.solution)
+
+    return (score,maze,metrics)
 
 
 def main():
