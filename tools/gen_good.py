@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 import sys,os,os.path
-import argparse,tempfile,itertools,subprocess,json
+import argparse,tempfile,itertools,subprocess,json,datetime
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 import parse_maze_comments as analyze
@@ -19,6 +19,24 @@ class Leaderboard:
             self.keep = self.keep[:self.keep_count]
 
 
+def emit(*args,**kwargs):
+    if len(args) > 1:
+        msg = args[0].format(*(args[1:]))
+    else:
+        msg = args[0]
+
+    print(msg,**kwargs)
+    sys.stdout.flush()
+
+    log_kwargs = kwargs.copy()
+    try:
+        log_kwargs.pop('file')
+    except KeyError:
+        pass
+
+    with open('gen_good.log','at',encoding='utf-8') as _log:
+        print(msg,**log_kwargs,file=_log)
+        
 
 def gen_maze( part, count=100, keep=3, parts=6, leaders=None, *args, **kwargs ):
     if leaders is None:
@@ -83,7 +101,7 @@ def gen_maze( part, count=100, keep=3, parts=6, leaders=None, *args, **kwargs ):
                     # The last part has no maze, and thus, no score or analysis.
                     leaders.add(1,i,None,{},scad)
             except Exception as e:
-                print(f'Error attempting to score maze.\n#{i} ({tmpscad.name}) part({part}/{parts})\n{command}\n{e}\n{scad}')
+                emit(f'Error attempting to score maze.\n#{i} ({tmpscad.name}) part({part}/{parts})\n{command}\n{e}\n{scad}')
 
             os.remove(tmpscad.name)
 
@@ -112,24 +130,27 @@ if __name__ == '__main__':
 
         lead_index = 0
         for score,info in lead.keep:
-            print(f'\n\n{"=" * 60}')
+            emit(f'\n\n{"=" * 60}')
             lead_index += 1
             idx,maze,metrics,scad = info
-            print(f'Score: {score}')
+            emit(f'Score: {score}')
             if 'human_readable' in metrics:
-                print('\n'.join(metrics['human_readable']['solution']))
+                emit('\n'.join(metrics['human_readable']['solution']))
             outfile = f'part-{part_number}.{lead_index:02d}.scad'
             with open(outfile, 'wt', encoding='utf-8') as _out:
                 print(scad,file=_out)
-            print(outfile)
+            emit(outfile)
             with open(f'{outfile}.meta', 'wt', encoding='utf-8') as _out:
-                print('Difficulty Score: {score}', file=_out)
+                emit('Difficulty Score: {score}', file=_out)
                 metrics_json = dict(metrics)
                 metrics_json.pop('human_readable', None)
-                print(json.dumps(metrics_json, indent=2),file=_out)
+                emit(json.dumps(metrics_json, indent=2),file=_out)
                 if 'human_readable' in metrics:
-                    print(f'\n\n{"\n".join(metrics["human_readable"]["visualization"])}',file=_out)
-                    print(f'\n\n{"\n".join(metrics["human_readable"]["solution"])}',file=_out)
+                    emit(f'\n\n{"\n".join(metrics["human_readable"]["visualization"])}',file=_out)
+                    emit(f'\n\n{"\n".join(metrics["human_readable"]["solution"])}',file=_out)
 
+            emit('\nGenerating STL')
+            started = datetime.datetime.now()
             result = subprocess.run([ 'openscad', '-q', outfile, '-o', f'{outfile}.stl'])
-    
+            elapsed = datetime.datetime.now() - started
+            emit(f'  {outfile}.stl: {elapsed}')
