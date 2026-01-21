@@ -57,7 +57,7 @@ def gen_maze( part, count=100, keep=3, parts=6, leaders=None, *args, **kwargs ):
 
         '--helix':  0,            # non-helical (no slope to maze path?)
         '--part-thickness':  2,   # wall thickness (mm) (wall of the cylinder, not the maze)
-        '--park-thickness':  1,   # thickness of park ridge to click closed (mm)
+        '--park-thickness':  0.7, # thickness of park ridge to click closed (mm)
         '--maze-thickness':  2,   # maze thickness (mm); the height of the maze walls
         '--maze-complexity':  7, # [-10, +10]
         '--maze-step':  5,        # maze spacing (mm); the (centerline) distance between one cell and the next
@@ -111,13 +111,20 @@ def gen_maze( part, count=100, keep=3, parts=6, leaders=None, *args, **kwargs ):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--count',type=int,default=100)
+    parser.add_argument('--keep',type=int,default=3)
+    parser.add_argument('--part',type=int,default=0)
     cmdline = parser.parse_args()
 
     kwargs = dict()
 
     nubs = { 1:2, 2:2, 3:2, 4:2, 5:3, 6:3 }
 
-    for part_number in range(1,7):
+    if cmdline.part == 0:
+        part_number_range = range(1,7)
+    else:
+        part_number_range = (cmdline.part,)
+
+    for part_number in part_number_range:
         lead = None
         count = cmdline.count
         if part_number == 6:
@@ -141,7 +148,7 @@ if __name__ == '__main__':
                 print(scad,file=_out)
             emit(outfile)
             with open(f'{outfile}.meta', 'wt', encoding='utf-8') as _out:
-                emit('Difficulty Score: {score}', file=_out)
+                emit(f'Difficulty Score: {score}', file=_out)
                 metrics_json = dict(metrics)
                 metrics_json.pop('human_readable', None)
                 emit(json.dumps(metrics_json, indent=2),file=_out)
