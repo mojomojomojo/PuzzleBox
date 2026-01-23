@@ -2146,7 +2146,7 @@ main (int argc, const char *argv[])
       }
 
       // Maze
-      fprintf (out, "difference(){union(){");
+      fprintf (out, "// Maze\ndifference(){union(){");
       if (mazeinside)
          makemaze (r0, 1);
       if (mazeoutside)
@@ -2158,17 +2158,27 @@ main (int argc, const char *argv[])
          fprintf (out, "}\n");
       }
       // Base
-      fprintf (out, "difference(){\n");
+      fprintf (out, "// BASE\ndifference(){\n");
       if (part == parts)
-         fprintf (out, "outer(%lld,%lld);\n", scaled (height),
-                  scaled ((r2 - outerround) / cos ((double) M_PI / (outersides ? : 100))));
+         fprintf (out, "outer(%lld,%lld);\n",
+		  scaled (height),
+                  scaled ((r2 - outerround) / cos ((double) M_PI / (outersides ? : 100)))
+		  );
       else if (part + 1 >= parts)
-         fprintf (out, "mirror([1,0,0])outer(%lld,%lld);\n", scaled (baseheight),
-                  scaled ((r2 - outerround) / cos ((double) M_PI / (outersides ? : 100))));
+         fprintf (out, "mirror([1,0,0])outer(%lld,%lld);\n",
+		  scaled (baseheight),
+                  scaled ((r2 - outerround) / cos ((double) M_PI / (outersides ? : 100)))
+		  );
       else
          fprintf (out, "hull(){cylinder(r=%lld,h=%lld,$fn=%d);translate([0,0,%lld])cylinder(r=%lld,h=%lld,$fn=%d);}\n",
-                  scaled (r2 - mazethickness), scaled (baseheight), W * 4, scaled (mazemargin), scaled (r2),
-                  scaled (baseheight - mazemargin), W * 4);
+                  scaled (r2 - mazethickness),
+		  scaled (baseheight),
+		  W * 4,
+		  scaled (mazemargin),
+		  scaled (r2),
+                  scaled (baseheight - mazemargin),
+		  W * 4
+		  );
       fprintf (out, "translate([0,0,%lld])cylinder(r=%lld,h=%lld,$fn=%d);\n", scaled (basethickness), scaled (r0 + (part > 1 && mazeinside ? mazethickness + clearance : 0) + (!mazeinside && part < parts ? clearance : 0)), scaled (height), W * 4);  // Hole
       fprintf (out, "}\n");
       fprintf (out, "}\n");
@@ -2199,6 +2209,7 @@ main (int argc, const char *argv[])
       }
       if (textend)
       {
+	fprintf(out, "// Text End\n");
          int n = 0;
          char *p = strdupa (textend);
          while (p)
