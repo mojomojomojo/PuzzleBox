@@ -191,8 +191,16 @@ part-5.10.2-3nub.scad
 ## Part 6
 
 part-1.01.scad
+part-1.01.scad.meta
 part-2.02.scad
+part-2.02.scad.meta
 part-3.02.scad
+part-3.02.scad.meta
 part-4.03.scad
+part-4.03.scad.meta
 part-5.10.scad
+part-5.10.scad.meta
 part-5.10.2-3nub.scad
+
+
+
