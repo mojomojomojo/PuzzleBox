@@ -646,105 +646,71 @@ main (int argc, const char *argv[])
     */
    int box (int part)
    {                            // Make the box - part 1 in inside
-      struct MazeInfo {
-         double entrya;
-         double mazeexit;
-      };
-      struct MazeInfo makemaze (double r, int inside, int output);
       int N,
         X,
         Y,
         Z,
         S;
-      // Pre-calculate dimensions for all parts
-      double r0_arr[parts], r1_arr[parts], r2_arr[parts], r3_arr[parts], height_arr[parts];
-      double entrya_arr[parts], mazeexit_arr[parts];
-      int mazeinside_arr[parts], mazeoutside_arr[parts], nextinside_arr[parts], nextoutside_arr[parts];
-      for(int p=1; p<=parts; p++){
-         int mazeinside = inside;
-         int mazeoutside = !inside;
-         int nextinside = inside;
-         int nextoutside = !inside;
-         if (flip){
-            if (p & 1){
-               mazeinside = 1 - mazeinside;
-               nextoutside = 1 - nextoutside;
-            } else {
-               mazeoutside = 1 - mazeoutside;
-               nextinside = 1 - nextinside;
-            }
-         }
-         if (p == 1) mazeinside = 0;
-         if (p == parts) mazeoutside = 0;
-         if (p + 1 >= parts) nextoutside = 0;
-         if (p == parts) nextinside = 0;
-         mazeinside_arr[p-1] = mazeinside;
-         mazeoutside_arr[p-1] = mazeoutside;
-         nextinside_arr[p-1] = nextinside;
-         nextoutside_arr[p-1] = nextoutside;
-         double r1 = corediameter / 2 + wallthickness + (p - 1) * (wallthickness + mazethickness + clearance);  // Outer
-         if (coresolid)
-            r1 -= wallthickness + mazethickness + clearance - (inside ? mazethickness : 0);        // Adjust to make part 2 the core diameter
-         int W = ((int) (r1 * 2 * M_PI / mazestep)) / nubs * nubs; // Default value
-         double r0 = r1 - wallthickness;   // Inner
-         if (mazeinside && p > 1)
-            r0 -= mazethickness;   // Maze on inside
-         if (mazeoutside && p < parts)
-            r1 += mazethickness;   // Maze on outside
-         double r2 = r1;           // Base outer
-         if (p < parts)
-            r2 += clearance;
-         if (p + 1 >= parts && textsides && !textoutset)
-            r2 += textdepth;
-         if (nextinside)
-            r2 += mazethickness;
-         if (nextoutside || p + 1 == parts)
-            r2 += wallthickness;
-         if (basewide && p + 1 < parts)
-            r2 += nextoutside ? mazethickness : wallthickness;
-         double r3 = r2;
-         if (outersides && p + 1 >= parts)
-            r3 /= cos ((double) M_PI / outersides);        // Bigger because of number of sides
-         r0_arr[p-1] = r0;
-         r1_arr[p-1] = r1;
-         r2_arr[p-1] = r2;
-         r3_arr[p-1] = r3;
-         double height = (coresolid ? coregap + baseheight : 0) + coreheight + basethickness + (basethickness + basegap) * (p - 1);
-         if (p == 1)
-            height -= (coresolid ? coreheight : coregap);
-         if (p > 1)
-            height -= baseheight;  // base from previous unit is added to this
-         height_arr[p-1] = height;
-         if (mazeoutside) {
-            struct MazeInfo mi = makemaze(r1, 0, 0);
-            entrya_arr[p-1] = mi.entrya;
-            mazeexit_arr[p-1] = mi.mazeexit;
-            if (fixnubs && globalexit == 0) globalexit = mi.entrya;
-         } else if (mazeinside) {
-            struct MazeInfo mi = makemaze(r0, 1, 0);
-            entrya_arr[p-1] = mi.entrya;
-            mazeexit_arr[p-1] = mi.mazeexit;
-            if (fixnubs && globalexit == 0) globalexit = mi.entrya;
-         }
-      }
       double entrya = 0;        // Entry angle
       double mazeexit = 0;      // Maze exit angle (saved for opposite nub positioning)
-      int mazeinside = mazeinside_arr[part-1];  // This part has maze inside
-      int mazeoutside = mazeoutside_arr[part-1];        // This part has maze outside
-      int nextinside = nextinside_arr[part-1];  // Next part has maze inside
-      int nextoutside = nextoutside_arr[part-1];        // Next part has maze outside
+      int mazeinside = inside;  // This part has maze inside
+      int mazeoutside = !inside;        // This part has maze outside
+      int nextinside = inside;  // Next part has maze inside
+      int nextoutside = !inside;        // Next part has maze outside
+      if (flip)
+      {
+         if (part & 1)
+         {
+            mazeinside = 1 - mazeinside;
+            nextoutside = 1 - nextoutside;
+         } else
+         {
+            mazeoutside = 1 - mazeoutside;
+            nextinside = 1 - nextinside;
+         }
+      }
+      if (part == 1)
+         mazeinside = 0;
+      if (part == parts)
+         mazeoutside = 0;
+      if (part + 1 >= parts)
+         nextoutside = 0;
+      if (part == parts)
+         nextinside = 0;
       // Dimensions
       // r0 is inside of part+maze
       // r1 is outside of part+maze
       // r2 is outside of base before "sides" adjust
       // r3 is outside of base with "sides" adjust
-      double r1 = r1_arr[part-1];
+      double r1 = corediameter / 2 + wallthickness + (part - 1) * (wallthickness + mazethickness + clearance);  // Outer
+      if (coresolid)
+         r1 -= wallthickness + mazethickness + clearance - (inside ? mazethickness : 0);        // Adjust to make part 2 the core diameter
       int W = ((int) (r1 * 2 * M_PI / mazestep)) / nubs * nubs; // Default value
-      double r0 = r0_arr[part-1];
-      double r2 = r2_arr[part-1];
-      double r3 = r3_arr[part-1];
+      double r0 = r1 - wallthickness;   // Inner
+      if (mazeinside && part > 1)
+         r0 -= mazethickness;   // Maze on inside
+      if (mazeoutside && part < parts)
+         r1 += mazethickness;   // Maze on outside
+      double r2 = r1;           // Base outer
+      if (part < parts)
+         r2 += clearance;
+      if (part + 1 >= parts && textsides && !textoutset)
+         r2 += textdepth;
+      if (nextinside)
+         r2 += mazethickness;
+      if (nextoutside || part + 1 == parts)
+         r2 += wallthickness;
+      if (basewide && part + 1 < parts)
+         r2 += nextoutside ? mazethickness : wallthickness;
+      double r3 = r2;
+      if (outersides && part + 1 >= parts)
+         r3 /= cos ((double) M_PI / outersides);        // Bigger because of number of sides
       fprintf (out, "// Part %d (%.2fmm to %.2fmm and %.2fmm/%.2fmm base)\n", part, r0, r1, r2, r3);
-      double height = height_arr[part-1];
+      double height = (coresolid ? coregap + baseheight : 0) + coreheight + basethickness + (basethickness + basegap) * (part - 1);
+      if (part == 1)
+         height -= (coresolid ? coreheight : coregap);
+      if (part > 1)
+         height -= baseheight;  // base from previous unit is added to this
       // Output
       /**
        * Generates a cylindrical maze pattern on the inside or outside of a part.
@@ -754,7 +720,7 @@ main (int argc, const char *argv[])
        * @param r Radius at which to generate the maze
        * @param inside If 1, maze is on inside surface; if 0, maze is on outside surface
        */
-      struct MazeInfo makemaze (double r, int inside, int output)
+      void makemaze (double r, int inside)
       {                         // Make the maze
          W = ((int) ((r + (inside ? mazethickness : -mazethickness)) * 2 * M_PI / mazestep)) / nubs * nubs;     // Update W for actual maze
          double base = (inside ? basethickness : baseheight);
@@ -1027,7 +993,6 @@ main (int argc, const char *argv[])
                maze[X][Y] += FLAGU;
             }
 
-            if(output) {
             // Output maze visualization
             fprintf (out, "//\n");
             fprintf (out, "// ============ MAZE VISUALIZATION (%s, %dx%d) ============\n", inside ? "INSIDE" : "OUTSIDE", W, H);
@@ -1836,7 +1801,6 @@ main (int argc, const char *argv[])
                appendmazedata ("MAZE_END\n");
                appendmazedata ("\n");
             }
-            }
 
             int MAXY = height / (mazestep / 4) + 10;
             struct
@@ -2183,13 +2147,10 @@ main (int argc, const char *argv[])
 
       // Maze
       fprintf (out, "// Maze\ndifference(){union(){");
-      double r = mazeinside ? r0 : r1;
-      int ins = mazeinside ? 1 : 0;
-      if (mazeinside || mazeoutside) {
-         struct MazeInfo mi2 = makemaze(r, ins, 1);
-         entrya = entrya_arr[part-1];
-         mazeexit = mazeexit_arr[part-1];
-      }
+      if (mazeinside)
+         makemaze (r0, 1);
+      if (mazeoutside)
+         makemaze (r1, 0);
       if (!mazeinside && !mazeoutside && part < parts)
       {
          fprintf (out, "difference(){\n");
@@ -2199,15 +2160,25 @@ main (int argc, const char *argv[])
       // Base
       fprintf (out, "// BASE\ndifference(){\n");
       if (part == parts)
-         fprintf (out, "outer(%lld,%lld);\n", scaled (height),
-                  scaled ((r2 - outerround) / cos ((double) M_PI / (outersides ? : 100))));
+         fprintf (out, "outer(%lld,%lld);\n",
+		  scaled (height),
+                  scaled ((r2 - outerround) / cos ((double) M_PI / (outersides ? : 100)))
+		  );
       else if (part + 1 >= parts)
-         fprintf (out, "mirror([1,0,0])outer(%lld,%lld);\n", scaled (baseheight),
-                  scaled ((r2 - outerround) / cos ((double) M_PI / (outersides ? : 100))));
+         fprintf (out, "mirror([1,0,0])outer(%lld,%lld);\n",
+		  scaled (baseheight),
+                  scaled ((r2 - outerround) / cos ((double) M_PI / (outersides ? : 100)))
+		  );
       else
          fprintf (out, "hull(){cylinder(r=%lld,h=%lld,$fn=%d);translate([0,0,%lld])cylinder(r=%lld,h=%lld,$fn=%d);}\n",
-                  scaled (r2 - mazethickness), scaled (baseheight), W * 4, scaled (mazemargin), scaled (r2),
-                  scaled (baseheight - mazemargin), W * 4);
+                  scaled (r2 - mazethickness),
+		  scaled (baseheight),
+		  W * 4,
+		  scaled (mazemargin),
+		  scaled (r2),
+                  scaled (baseheight - mazemargin),
+		  W * 4
+		  );
       fprintf (out, "translate([0,0,%lld])cylinder(r=%lld,h=%lld,$fn=%d);\n", scaled (basethickness), scaled (r0 + (part > 1 && mazeinside ? mazethickness + clearance : 0) + (!mazeinside && part < parts ? clearance : 0)), scaled (height), W * 4);  // Hole
       fprintf (out, "}\n");
       fprintf (out, "}\n");
@@ -2371,8 +2342,6 @@ main (int argc, const char *argv[])
          fprintf (out, "[1,2,6],[1,6,5],[5,6,10],[5,10,9],[9,10,14],[9,14,13],");
          fprintf (out, "[2,3,6],[3,7,6],[6,7,11],[6,11,10],[10,11,15],[10,15,14],");
          fprintf (out, "]);\n");
-      }
-      return (struct MazeInfo){entrya, mazeexit};
       }
 
       if (!mazeinside && part > 1)

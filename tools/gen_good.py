@@ -66,7 +66,6 @@ def gen_maze( part, count=100, keep=3, parts=6, leaders=None, *args, **kwargs ):
     }
     default_args = [
         '--fix-nubs',
-        #'--inside',
     ]
 
     cmdline_kwargs = default_kwargs.copy()
@@ -116,11 +115,8 @@ if __name__ == '__main__':
     parser.add_argument('--part',type=int,default=0)
     cmdline = parser.parse_args()
 
-    kwargs = dict(
-        keep = cmdline.keep,
-    )
+    kwargs = dict()
 
-    # puzzlebox assumes the nub count is the same on the inside AND outside
     nubs = { 1:2, 2:2, 3:2, 4:2, 5:3, 6:3 }
 
     if cmdline.part == 0:
