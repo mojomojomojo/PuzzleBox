@@ -438,6 +438,67 @@ main (int argc, const char *argv[])
    if (coresolid && coregap < mazestep * 2)
       coregap = mazestep * 2;
 
+   // Pre-calculate size data for all parts
+   double part_r0s[parts + 1];
+   double part_r1s[parts + 1];
+   double part_r2s[parts + 1];
+   double part_r3s[parts + 1];
+   double part_entryas[parts + 1];
+   double part_mazeexits[parts + 1];
+   for (int p = 1; p <= parts; p++)
+   {
+      int mazeinside = inside;
+      int mazeoutside = !inside;
+      int nextinside = inside;
+      int nextoutside = !inside;
+      if (flip)
+      {
+         if (p & 1)
+         {
+            mazeinside = 1 - mazeinside;
+            nextoutside = 1 - nextoutside;
+         } else
+         {
+            mazeoutside = 1 - mazeoutside;
+            nextinside = 1 - nextinside;
+         }
+      }
+      if (p == 1)
+         mazeinside = 0;
+      if (p == parts)
+         mazeoutside = 0;
+      if (p + 1 >= parts)
+         nextoutside = 0;
+      if (p == parts)
+         nextinside = 0;
+      double r1 = corediameter / 2 + wallthickness + (p - 1) * (wallthickness + mazethickness + clearance);  // Outer
+      if (coresolid)
+         r1 -= wallthickness + mazethickness + clearance - (inside ? mazethickness : 0);        // Adjust to make part 2 the core diameter
+      double r0 = r1 - wallthickness;   // Inner
+      if (mazeinside && p > 1)
+         r0 -= mazethickness;   // Maze on inside
+      if (mazeoutside && p < parts)
+         r1 += mazethickness;   // Maze on outside
+      double r2 = r1;           // Base outer
+      if (p < parts)
+         r2 += clearance;
+      if (p + 1 >= parts && textsides && !textoutset)
+         r2 += textdepth;
+      if (nextinside)
+         r2 += mazethickness;
+      if (nextoutside || p + 1 == parts)
+         r2 += wallthickness;
+      if (basewide && p + 1 < parts)
+         r2 += nextoutside ? mazethickness : wallthickness;
+      double r3 = r2;
+      if (outersides && p + 1 >= parts)
+         r3 /= cos ((double) M_PI / outersides);        // Bigger because of number of sides
+      part_r0s[p] = r0;
+      part_r1s[p] = r1;
+      part_r2s[p] = r2;
+      part_r3s[p] = r3;
+   }
+
    int markpos0 = (outersides && outersides / nubs * nubs != outersides);       // Mark on position zero for alignment
    double nubskew = (symmectriccut ? 0 : mazestep / 8); // Skew the shape of the cut
 
@@ -651,8 +712,8 @@ main (int argc, const char *argv[])
         Y,
         Z,
         S;
-      double entrya = 0;        // Entry angle
-      double mazeexit = 0;      // Maze exit angle (saved for opposite nub positioning)
+      double part_entrya = 0;        // Entry angle
+      double part_mazeexit = 0;      // Maze exit angle (saved for opposite nub positioning)
       int mazeinside = inside;  // This part has maze inside
       int mazeoutside = !inside;        // This part has maze outside
       int nextinside = inside;  // Next part has maze inside
@@ -678,34 +739,16 @@ main (int argc, const char *argv[])
       if (part == parts)
          nextinside = 0;
       // Dimensions
-      // r0 is inside of part+maze
-      // r1 is outside of part+maze
-      // r2 is outside of base before "sides" adjust
-      // r3 is outside of base with "sides" adjust
-      double r1 = corediameter / 2 + wallthickness + (part - 1) * (wallthickness + mazethickness + clearance);  // Outer
-      if (coresolid)
-         r1 -= wallthickness + mazethickness + clearance - (inside ? mazethickness : 0);        // Adjust to make part 2 the core diameter
-      int W = ((int) (r1 * 2 * M_PI / mazestep)) / nubs * nubs; // Default value
-      double r0 = r1 - wallthickness;   // Inner
-      if (mazeinside && part > 1)
-         r0 -= mazethickness;   // Maze on inside
-      if (mazeoutside && part < parts)
-         r1 += mazethickness;   // Maze on outside
-      double r2 = r1;           // Base outer
-      if (part < parts)
-         r2 += clearance;
-      if (part + 1 >= parts && textsides && !textoutset)
-         r2 += textdepth;
-      if (nextinside)
-         r2 += mazethickness;
-      if (nextoutside || part + 1 == parts)
-         r2 += wallthickness;
-      if (basewide && part + 1 < parts)
-         r2 += nextoutside ? mazethickness : wallthickness;
-      double r3 = r2;
-      if (outersides && part + 1 >= parts)
-         r3 /= cos ((double) M_PI / outersides);        // Bigger because of number of sides
-      fprintf (out, "// Part %d (%.2fmm to %.2fmm and %.2fmm/%.2fmm base)\n", part, r0, r1, r2, r3);
+      // part_r0 is inside of part+maze
+      // part_r1 is outside of part+maze
+      // part_r2 is outside of base before "sides" adjust
+      // part_r3 is outside of base with "sides" adjust
+      double part_r0 = part_r0s[part];
+      double part_r1 = part_r1s[part];
+      double part_r2 = part_r2s[part];
+      double part_r3 = part_r3s[part];
+      int W = ((int) (part_r1 * 2 * M_PI / mazestep)) / nubs * nubs; // Default value
+      fprintf (out, "// Part %d (%.2fmm to %.2fmm and %.2fmm/%.2fmm base)\n", part, part_r0, part_r1, part_r2, part_r3);
       double height = (coresolid ? coregap + baseheight : 0) + coreheight + basethickness + (basethickness + basegap) * (part - 1);
       if (part == 1)
          height -= (coresolid ? coreheight : coregap);
@@ -980,10 +1023,10 @@ main (int argc, const char *argv[])
                }
                fprintf (out, "// Path length %d\n", max);
             }
-            entrya = (double) 360 *maxx / W;
-            mazeexit = entrya;  // Save maze exit angle for opposite nub positioning
+            part_entrya = (double) 360 *maxx / W;
+            part_mazeexit = part_entrya;  // Save maze exit angle for opposite nub positioning
             if (fixnubs && globalexit == 0)
-               globalexit = entrya;  // Save first maze exit globally for consistent nub positioning
+               globalexit = part_entrya;  // Save first maze exit globally for consistent nub positioning
             // Entry point for maze
             for (X = maxx % (W / nubs); X < W; X += W / nubs)
             {
@@ -2112,7 +2155,7 @@ main (int argc, const char *argv[])
          }
       }
 
-      fprintf (out, "translate([%lld,%lld,0])\n", scaled (x + (outersides & 1 ? r3 : r2)), scaled (y + (outersides & 1 ? r3 : r2)));
+      fprintf (out, "translate([%lld,%lld,0])\n", scaled (x + (outersides & 1 ? part_r3 : part_r2)), scaled (y + (outersides & 1 ? part_r3 : part_r2)));
       if (outersides)
          fprintf (out, "rotate([0,0,%f])", (double) 180 / outersides + (part + 1 == parts ? 180 : 0));
       fprintf (out, "{\n");
@@ -2126,21 +2169,21 @@ main (int argc, const char *argv[])
          if (!markpos0 || part + 1 < parts)
             return;
          double a = 0,
-            r = r0 + wallthickness / 2,
+            r = part_r0 + wallthickness / 2,
             t = wallthickness * 2;
          if (mazeinside)
-            r = r0 + mazethickness + wallthickness / 2;
+            r = part_r0 + mazethickness + wallthickness / 2;
          else if (mazeoutside)
-            r = r1 - mazethickness - wallthickness / 2;
+            r = part_r1 - mazethickness - wallthickness / 2;
          if (!mazeoutside)
          {                      // Try not to cut outside of box
             r -= wallthickness / 2;
             t = wallthickness * 3 / 2;
          }
          if (part == parts && mazeinside)
-            a = (mirrorinside ? 1 : -1) * entrya;
+            a = (mirrorinside ? 1 : -1) * part_entrya;
          if (part + 1 == parts && mazeoutside)
-            a = entrya;
+            a = part_entrya;
          fprintf (out, "rotate([0,0,%f])translate([0,%lld,%lld])cylinder(d=%lld,h=%lld,center=true,$fn=4);\n", a, scaled (r),
                   scaled (height), scaled (t), scaled (mazestep / 2));
       }
@@ -2148,13 +2191,13 @@ main (int argc, const char *argv[])
       // Maze
       fprintf (out, "// Maze\ndifference(){union(){");
       if (mazeinside)
-         makemaze (r0, 1);
+         makemaze (part_r0, 1);
       if (mazeoutside)
-         makemaze (r1, 0);
+         makemaze (part_r1, 0);
       if (!mazeinside && !mazeoutside && part < parts)
       {
          fprintf (out, "difference(){\n");
-         fprintf (out, "translate([0,0,%lld])cylinder(r=%lld,h=%lld,$fn=%d);translate([0,0,%lld])cylinder(r=%lld,h=%lld,$fn=%d);\n", scaled (basethickness / 2 - clearance), scaled (r1), scaled (height - basethickness / 2 + clearance), W * 4, scaled (basethickness), scaled (r0), scaled (height), W * 4); // Non maze
+         fprintf (out, "translate([0,0,%lld])cylinder(r=%lld,h=%lld,$fn=%d);translate([0,0,%lld])cylinder(r=%lld,h=%lld,$fn=%d);\n", scaled (basethickness / 2 - clearance), scaled (part_r1), scaled (height - basethickness / 2 + clearance), W * 4, scaled (basethickness), scaled (part_r0), scaled (height), W * 4); // Non maze
          fprintf (out, "}\n");
       }
       // Base
@@ -2162,24 +2205,24 @@ main (int argc, const char *argv[])
       if (part == parts)
          fprintf (out, "outer(%lld,%lld);\n",
 		  scaled (height),
-                  scaled ((r2 - outerround) / cos ((double) M_PI / (outersides ? : 100)))
+                  scaled ((part_r2 - outerround) / cos ((double) M_PI / (outersides ? : 100)))
 		  );
       else if (part + 1 >= parts)
          fprintf (out, "mirror([1,0,0])outer(%lld,%lld);\n",
 		  scaled (baseheight),
-                  scaled ((r2 - outerround) / cos ((double) M_PI / (outersides ? : 100)))
+                  scaled ((part_r2 - outerround) / cos ((double) M_PI / (outersides ? : 100)))
 		  );
       else
          fprintf (out, "hull(){cylinder(r=%lld,h=%lld,$fn=%d);translate([0,0,%lld])cylinder(r=%lld,h=%lld,$fn=%d);}\n",
-                  scaled (r2 - mazethickness),
+                  scaled (part_r2 - mazethickness),
 		  scaled (baseheight),
 		  W * 4,
 		  scaled (mazemargin),
-		  scaled (r2),
+		  scaled (part_r2),
                   scaled (baseheight - mazemargin),
 		  W * 4
 		  );
-      fprintf (out, "translate([0,0,%lld])cylinder(r=%lld,h=%lld,$fn=%d);\n", scaled (basethickness), scaled (r0 + (part > 1 && mazeinside ? mazethickness + clearance : 0) + (!mazeinside && part < parts ? clearance : 0)), scaled (height), W * 4);  // Hole
+      fprintf (out, "translate([0,0,%lld])cylinder(r=%lld,h=%lld,$fn=%d);\n", scaled (basethickness), scaled (part_r0 + (part > 1 && mazeinside ? mazethickness + clearance : 0) + (!mazeinside && part < parts ? clearance : 0)), scaled (height), W * 4);  // Hole
       fprintf (out, "}\n");
       fprintf (out, "}\n");
       if (gripdepth)
@@ -2189,22 +2232,22 @@ main (int argc, const char *argv[])
                (out,
                 "rotate([0,0,%f])translate([0,0,%lld])rotate_extrude(start=180,angle=360,convexity=10,$fn=%d)translate([%lld,0,0])circle(r=%lld,$fn=9);\n",
                 (double) 360 / W / 4 / 2, scaled (mazemargin + (baseheight - mazemargin) / 2), W * 4,
-                scaled (r2 + gripdepth), scaled (gripdepth * 2));
+                scaled (part_r2 + gripdepth), scaled (gripdepth * 2));
          else if (part + 1 == parts)
             fprintf (out,
                      "translate([0,0,%lld])rotate_extrude(start=180,angle=360,convexity=10,$fn=%d)translate([%lld,0,0])circle(r=%lld,$fn=9);\n",
-                     scaled (outerround + (baseheight - outerround) / 2), outersides ? : 100, scaled (r3 + gripdepth),
+                     scaled (outerround + (baseheight - outerround) / 2), outersides ? : 100, scaled (part_r3 + gripdepth),
                      scaled (gripdepth * 2));
       }
       if (basewide && nextoutside && part + 1 < parts)  // Connect endpoints over base
       {
-         int W = ((int) ((r2 - mazethickness) * 2 * M_PI / mazestep)) / nubs * nubs;
-         double wi = 2 * (r2 - mazethickness) * 2 * M_PI / W / 4;
-         double wo = 2 * r2 * 2 * M_PI * 3 / W / 4;
+         int W = ((int) ((part_r2 - mazethickness) * 2 * M_PI / mazestep)) / nubs * nubs;
+         double wi = 2 * (part_r2 - mazethickness) * 2 * M_PI / W / 4;
+         double wo = 2 * part_r2 * 2 * M_PI * 3 / W / 4;
          fprintf
             (out,
              "for(a=[0:%f:359])rotate([0,0,a])translate([0,%lld,0])hull(){cube([%lld,%lld,%lld],center=true);cube([%lld,0.01,%lld],center=true);}\n",
-             (double) 360 / nubs, scaled (r2), scaled (wi), scaled (mazethickness * 2), scaled (baseheight * 2 + clearance),
+             (double) 360 / nubs, scaled (part_r2), scaled (wi), scaled (mazethickness * 2), scaled (baseheight * 2 + clearance),
              scaled (wo), scaled (baseheight * 2 + clearance));
       }
       if (textend)
@@ -2220,7 +2263,7 @@ main (int argc, const char *argv[])
             if (*p && n == (parts - part))
             {
                fprintf (out, "rotate([0,0,%f])", (part == parts ? 1 : -1) * (90 + (double) 180 / (outersides ? : 100)));
-               cuttext (r2 - outerround, p, textfontend, 0);
+               cuttext (part_r2 - outerround, p, textfontend, 0);
             }
             p = q;
             n++;
@@ -2236,7 +2279,7 @@ main (int argc, const char *argv[])
       void textside (int outset)
       {
          double a = 90 + (double) 180 / outersides;
-         double h = r3 * sin (M_PI / outersides) * textsidescale / 100;
+         double h = part_r3 * sin (M_PI / outersides) * textsidescale / 100;
          char *p = strdupa (textsides);
          while (p)
          {
@@ -2245,7 +2288,7 @@ main (int argc, const char *argv[])
                *q++ = 0;
             if (*p)
             {
-               fprintf (out, "rotate([0,0,%f])translate([0,-%lld,%lld])rotate([-90,-90,0])", a, scaled (r2),
+               fprintf (out, "rotate([0,0,%f])translate([0,-%lld,%lld])rotate([-90,-90,0])", a, scaled (part_r2),
                         scaled (outerround + (height - outerround) / 2));
                cuttext (h, p, textfont, outset);
             }
@@ -2257,37 +2300,39 @@ main (int argc, const char *argv[])
       if (textsides && part == parts && outersides && !textoutset)
          textside (0);
       if (ajklogo && part == parts)
-         fprintf (out, "translate([0,0,%lld])logo(%lld);\n", scaled (basethickness - logodepth), scaled (r0 * 1.8));
+         fprintf (out, "translate([0,0,%lld])logo(%lld);\n", scaled (basethickness - logodepth), scaled (part_r0 * 1.8));
       else if (aalogo && part == parts)
          fprintf (out, "translate([0,0,%lld])linear_extrude(height=%lld,convexity=10)logo(%lld,white=true);\n",
-                  scaled (basethickness - logodepth), scaled (logodepth * 2), scaled (r0 * 1.8));
+                  scaled (basethickness - logodepth), scaled (logodepth * 2), scaled (part_r0 * 1.8));
       else if (textinside)
          fprintf
             (out,
              "translate([0,0,%lld])linear_extrude(height=%lld,convexity=10)text(\"%s\",font=\"%s\",size=%lld,halign=\"center\",valign=\"center\");\n",
-             scaled (basethickness - logodepth), scaled (logodepth * 2), textinside, textfontend, scaled (r0));
+             scaled (basethickness - logodepth), scaled (logodepth * 2), textinside, textfontend, scaled (part_r0));
       if (markpos0 && part + 1 >= parts)
          mark ();
       fprintf (out, "}\n");
       if (textsides && part == parts && outersides && textoutset)
          textside (1);
       if (coresolid && part == 1)
-         fprintf (out, "translate([0,0,%lld])cylinder(r=%lld,h=%lld,$fn=%d);\n", scaled (basethickness), scaled (r0 + clearance + (!mazeinside && part < parts ? clearance : 0)), scaled (height - basethickness), W * 4);      // Solid core
+         fprintf (out, "translate([0,0,%lld])cylinder(r=%lld,h=%lld,$fn=%d);\n", scaled (basethickness), scaled (part_r0 + clearance + (!mazeinside && part < parts ? clearance : 0)), scaled (height - basethickness), W * 4);      // Solid core
       if ((mazeoutside && !flip && part == parts) || (!mazeoutside && part + 1 == parts))
-         entrya = 0;            // Align for lid alignment
+         part_entrya = 0;            // Align for lid alignment
       else if (fixnubs)
       {
-         entrya = globalexit + 180.0;  // Fixed position opposite maze exit (using global)
-         if (entrya >= 360.0)
-            entrya -= 360.0;
+         part_entrya = globalexit + 180.0;  // Fixed position opposite maze exit (using global)
+         if (part_entrya >= 360.0)
+            part_entrya -= 360.0;
       }
       else if (part < parts && !basewide)
       {                         // We can position randomly
          int v;
          if (read (f, &v, sizeof (v)) != sizeof (v))
             err (1, "Read /dev/random");
-         entrya = v % 360;
+         part_entrya = v % 360;
       }
+      part_entryas[part] = part_entrya;
+      part_mazeexits[part] = part_mazeexit;
       // Nubs
       /**
        * Generates the interlocking nubs that connect puzzle box parts.
@@ -2311,7 +2356,7 @@ main (int argc, const char *argv[])
             my = -my;           // This is nub outside which is for inside maze
          double a = -da * 1.5;  // Centre A
          double z = height - mazestep / 2 - (parkvertical ? 0 : mazestep / 8) - dz * 1.5 - my * 1.5;    // Centre Z
-         fprintf (out, "rotate([0,0,%f])for(a=[0:%f:359])rotate([0,0,a])polyhedron(points=[", entrya, (double) 360 / nubs);
+         fprintf (out, "rotate([0,0,%f])for(a=[0:%f:359])rotate([0,0,a])polyhedron(points=[", part_entrya, (double) 360 / nubs);
          r += (inside ? nubrclearance : -nubrclearance);        // Extra gap
          ri += (inside ? nubrclearance : -nubrclearance);       // Extra gap
          for (Z = 0; Z < 4; Z++)
@@ -2345,16 +2390,16 @@ main (int argc, const char *argv[])
       }
 
       if (!mazeinside && part > 1)
-         addnub (r0, 1);
+         addnub (part_r0, 1);
       if (!mazeoutside && part < parts)
-         addnub (r1, 0);
+         addnub (part_r1, 0);
       fprintf (out, "}\n");
-      x += (outersides & 1 ? r3 : r2) + r2 + 5;
+      x += (outersides & 1 ? part_r3 : part_r2) + part_r2 + 5;
       if (++n >= sq)
       {
          n = 0;
          x = 0;
-         y += (outersides & 1 ? r3 : r2) * 2 + 5;
+         y += (outersides & 1 ? part_r3 : part_r2) * 2 + 5;
       }
    }
 
