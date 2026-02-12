@@ -106,6 +106,10 @@ main (int argc, const char *argv[])
    int stl = 0;
    int resin = 0;
    const char *outfile = NULL;
+   const char *loadmazeinside = NULL;  // File to load inside maze from
+   const char *loadmazeoutside = NULL; // File to load outside maze from
+   const char *savemazeinside = NULL;  // File to save inside maze to
+   const char *savemazeoutside = NULL; // File to save outside maze to
 
    int f = open ("/dev/urandom", O_RDONLY);
    if (f < 0)
@@ -183,6 +187,10 @@ main (int argc, const char *argv[])
       {"no-a", 0, POPT_ARG_NONE | (noa ? POPT_ARGFLAG_DOC_HIDDEN : 0), &noa, 0, "No A"},
       {"web-form", 0, POPT_ARG_NONE, &webform, 0, "Web form"},
       {"out-file", 0, POPT_ARG_STRING, &outfile, 0, "Output to file", "filename"},
+      {"load-maze-inside", 0, POPT_ARG_STRING, &loadmazeinside, 0, "Load pre-generated inside maze from file", "filename"},
+      {"load-maze-outside", 0, POPT_ARG_STRING, &loadmazeoutside, 0, "Load pre-generated outside maze from file", "filename"},
+      {"save-maze-inside", 0, POPT_ARG_STRING, &savemazeinside, 0, "Save generated inside maze to file", "filename"},
+      {"save-maze-outside", 0, POPT_ARG_STRING, &savemazeoutside, 0, "Save generated outside maze to file", "filename"},
       POPT_AUTOHELP {}
    };
 
@@ -641,6 +649,197 @@ main (int argc, const char *argv[])
              "module logo(w=100,white=0,$fn=100){scale(w/100){if(!white)difference(){circle(d=100.5);circle(d=99.5);}difference(){if(white)circle(d=100);difference(){circle(d=92);for(m=[0,1])mirror([m,0,0]){difference(){translate([24,0,0])circle(r=22.5);translate([24,0,0])circle(r=15);}polygon([[1.5,22],[9,22],[9,-18.5],[1.5,-22]]);}}}}} // A&A Logo is copyright (c) 2013 and trademark Andrews & Arnold Ltd\n");
    }
    /**
+    * Saves a generated maze to a file in human-readable text format.
+    * File format:
+    *   PUZZLEBOX_MAZE v1.0
+    *   WIDTH <W>
+    *   HEIGHT <H>
+    *   DATA
+    *   <hex bytes, one row per line>
+    *   END
+    * 
+    * @param filename Path to output file
+    * @param maze Pointer to maze array data
+    * @param W Width of maze (number of cells around circumference)
+    * @param H Height of maze (number of cells vertically)
+    */
+   void save_maze (const char *filename, unsigned char *maze, int W, int H, int entry_x)
+   {
+      FILE *f = fopen (filename, "w");
+      if (!f)
+         err (1, "Cannot open maze file for writing: %s", filename);
+      
+      // Write header
+      fprintf (f, "PUZZLEBOX_MAZE v1.0\n");
+      fprintf (f, "WIDTH %d\n", W);
+      fprintf (f, "HEIGHT %d\n", H);
+      fprintf (f, "EXIT_X %d\n", entry_x);
+      fprintf (f, "DATA\n");
+      
+      // Write maze data as hex, one row per line
+      for (int y = 0;y < H; y++)
+      {
+         for (int x = 0; x < W; x++)
+         {
+            fprintf (f, "%02X", maze[x * H + y]);
+            if (x < W - 1)
+               fprintf (f, " ");
+         }
+         fprintf (f, "\n");
+      }
+      
+      fprintf (f, "END\n");
+      fclose (f);
+   }
+
+   /**
+    * Loads a pre-generated maze from a file in human-readable text format.
+    * File format:
+    *   PUZZLEBOX_MAZE v1.0
+    *   WIDTH <W>
+    *   HEIGHT <H>
+    *   DATA
+    *   <hex bytes, one row per line>
+    *   END
+    * 
+    * @param filename Path to input file
+    * @param maze Pointer to maze array to populate (must be pre-allocated)
+    * @param expected_W Expected width (0 to accept any width)
+    * @param expected_H Expected height (0 to accept any height)
+    * @param actual_W Pointer to store actual width read from file
+    * @param actual_H Pointer to store actual height read from file
+    * @param entry_x Pointer to store entry X position from file (can be NULL if not needed)
+    * @return 0 on success, 1 on error
+    */
+   int load_maze (const char *filename, unsigned char *maze, int expected_W, int expected_H, int *actual_W, int *actual_H, int *entry_x)
+   {
+      FILE *f = fopen (filename, "r");
+      if (!f)
+      {
+         warn ("Cannot open maze file for reading: %s", filename);
+         return 1;
+      }
+      
+      char line[16384];
+      int W = 0, H = 0, X = 0;
+      
+      // Read and validate header
+      if (!fgets (line, sizeof (line), f) || strncmp (line, "PUZZLEBOX_MAZE v1.0", 19) != 0)
+      {
+         fclose (f);
+         warnx ("Invalid maze file header in %s", filename);
+         return 1;
+      }
+      
+      // Read WIDTH
+      if (!fgets (line, sizeof (line), f) || sscanf (line, "WIDTH %d", &W) != 1 || W <= 0)
+      {
+         fclose (f);
+         warnx ("Invalid or missing WIDTH in %s", filename);
+         return 1;
+      }
+      
+      // Read HEIGHT
+      if (!fgets (line, sizeof (line), f) || sscanf (line, "HEIGHT %d", &H) != 1 || H <= 0)
+      {
+         fclose (f);
+         warnx ("Invalid or missing HEIGHT in %s", filename);
+         return 1;
+      }
+      
+      // Read EXIT_X (optional for backward compatibility with old ENTRY_X format)
+      if (fgets (line, sizeof (line), f))
+      {
+         if (sscanf (line, "EXIT_X %d", &X) == 1 || sscanf (line, "ENTRY_X %d", &X) == 1)
+         {
+            // Successfully read EXIT_X (or legacy ENTRY_X), now read the next line which should be DATA
+            if (!fgets (line, sizeof (line), f) || strncmp (line, "DATA", 4) != 0)
+            {
+               fclose (f);
+               warnx ("Missing DATA marker in %s", filename);
+               return 1;
+            }
+         }
+         else if (strncmp (line, "DATA", 4) == 0)
+         {
+            // Old format without EXIT_X/ENTRY_X, this line is DATA marker
+            X = 0;  // Default entry position
+         }
+         else
+         {
+            fclose (f);
+            warnx ("Expected EXIT_X or DATA marker in %s", filename);
+            return 1;
+         }
+      }
+      else
+      {
+         fclose (f);
+         warnx ("Unexpected end of file in %s", filename);
+         return 1;
+      }
+      
+      // Validate dimensions if expected values provided
+      if (expected_W > 0 && W != expected_W)
+      {
+         fclose (f);
+         warnx ("Maze width mismatch: expected %d, got %d from %s", expected_W, W, filename);
+         return 1;
+      }
+      if (expected_H > 0 && H != expected_H)
+      {
+         fclose (f);
+         warnx ("Maze height mismatch: expected %d, got %d from %s", expected_H, H, filename);
+         return 1;
+      }
+      
+      // Read maze data (one row per line)
+      for (int y = 0; y < H; y++)
+      {
+         if (!fgets (line, sizeof (line), f))
+         {
+            fclose (f);
+            warnx ("Unexpected end of file reading maze data at row %d in %s", y, filename);
+            return 1;
+         }
+         
+         // Parse hex values from this row
+         char *ptr = line;
+         for (int x = 0; x < W; x++)
+         {
+            unsigned int val;
+            if (sscanf (ptr, "%2X", &val) != 1)
+            {
+               fclose (f);
+               warnx ("Invalid hex data at row %d, col %d in %s", y, x, filename);
+               return 1;
+            }
+            maze[x * H + y] = (unsigned char) val;
+            
+            // Move pointer past this hex value and any whitespace
+            ptr += 2;
+            while (*ptr == ' ' || *ptr == '\t')
+               ptr++;
+         }
+      }
+      
+      // Read END line
+      if (!fgets (line, sizeof (line), f) || strncmp (line, "END", 3) != 0)
+      {
+         fclose (f);
+         warnx ("Missing END marker in %s", filename);
+         return 1;
+      }
+      
+      fclose (f);
+      *actual_W = W;
+      *actual_H = H;
+      if (entry_x)
+         *entry_x = X;
+      return 0;
+   }
+
+   /**
     * Appends formatted string to the maze data buffer for later inclusion in STL comments.
     * Dynamically grows the buffer as needed.
     */
@@ -788,6 +987,30 @@ main (int argc, const char *argv[])
          }
          unsigned char maze[W][H];
          memset (maze, 0, sizeof (unsigned char) * W * H);
+         
+         // Check if we should load a pre-generated maze
+         const char *loadfile = inside ? loadmazeinside : loadmazeoutside;
+         const char *savefile = inside ? savemazeinside : savemazeoutside;
+         int maze_loaded = 0;
+         int maxx = 0;  // Entry point for maze (declare at function scope)
+         double margin = mazemargin;  // Maze margin (declare at function scope)
+         
+         if (loadfile)
+         {
+            int loaded_W, loaded_H;
+            if (load_maze (loadfile, (unsigned char *) maze, W, H, &loaded_W, &loaded_H, &maxx) == 0)
+            {
+               // Successfully loaded maze
+               if (loaded_W != W || loaded_H != H)
+                  errx (1, "Loaded maze dimensions (%dx%d) don't match calculated dimensions (%dx%d) for %s maze",
+                        loaded_W, loaded_H, W, H, inside ? "inside" : "outside");
+               maze_loaded = 1;
+               fprintf (out, "// Loaded %s maze from %s (exit_x=%d)\n", inside ? "inside" : "outside", loadfile, maxx);
+            }
+            else
+               errx (1, "Failed to load maze from %s", loadfile);
+         }
+         
          /**
           * Tests if a maze cell is already in use or out of bounds.
           * Handles wrapping around the X axis (cylindrical topology) and
@@ -830,8 +1053,10 @@ main (int argc, const char *argv[])
             }
             return v;
          }
+         
+         // Generate maze (if not loaded from file)
+         if (!maze_loaded)
          {                      // Maze
-            double margin = mazemargin;
             // Make maze
             // Clear too high/low
             for (Y = 0; Y < H; Y++)
@@ -873,7 +1098,7 @@ main (int argc, const char *argv[])
                }
             }
             // Make maze
-            int maxx = 0;
+            maxx = 0;  // Reset maxx for generation
             if (testmaze)
             {                   // Simple test pattern
                for (Y = 0; Y < H; Y++)
@@ -1035,8 +1260,25 @@ main (int argc, const char *argv[])
                   maze[X][Y--] |= FLAGU + FLAGD;
                maze[X][Y] += FLAGU;
             }
+            
+            // Save generated maze if requested
+            if (savefile)
+            {
+               save_maze (savefile, (unsigned char *) maze, W, H, maxx);
+               fprintf (out, "// Saved %s maze to %s (exit_x=%d)\n", inside ? "inside" : "outside", savefile, maxx);
+            }
+         }  // End of maze generation block
+         else
+         {
+            // Maze was loaded from file with entry point position
+            // Calculate the angles based on the loaded entry position
+            part_entrya = (double) 360 * maxx / W;
+            part_mazeexit = part_entrya;
+            if (fixnubs && globalexit == 0)
+               globalexit = part_entrya;
+         }
 
-            // Output maze visualization
+         // Output maze visualization
             fprintf (out, "//\n");
             fprintf (out, "// ============ MAZE VISUALIZATION (%s, %dx%d) ============\n", inside ? "INSIDE" : "OUTSIDE", W, H);
             fprintf (out, "//\n");
@@ -2152,7 +2394,6 @@ main (int argc, const char *argv[])
                }
                fprintf (out, "],convexity=10);\n");
             }
-         }
       }
 
       fprintf (out, "translate([%lld,%lld,0])\n", scaled (x + (outersides & 1 ? part_r3 : part_r2)), scaled (y + (outersides & 1 ? part_r3 : part_r2)));
