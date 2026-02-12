@@ -38,42 +38,38 @@ def emit(*args,**kwargs):
         print(msg,**log_kwargs,file=_log)
         
 
-def gen_maze( part, count=100, keep=3, parts=6, leaders=None, *args, **kwargs ):
+def gen_maze( puzzlebox_args, part=1, count=100, keep=3, parts=6, leaders=None ):
     if leaders is None:
         leaders = Leaderboard(keep=keep)
 
-    default_kwargs = {
-        '--parts':  parts,            # 6 parts, 5 mazes
-        '--core-diameter':  15,   # size of empty space in smallest
-        '--core-height':  85,     # height of the innermost piece
-        '--nubs':  2,             # count of nubs (2,3)
-        '--base-height':  8,      # "base height" (mm); the height of the base of the part
-        
-        '--clearance':  0.4,      # clearance between parts, radius (default: 0.4)
-
-        '--nub-horizontal':  1.0, # scale the size of the nubs
-        '--nub-vertical':    1.0,
-        '--nub-normal':      1.0,
-
-        '--helix':  0,            # non-helical (no slope to maze path?)
-        '--part-thickness':  2,   # wall thickness (mm) (wall of the cylinder, not the maze)
-        '--park-thickness':  0.7, # thickness of park ridge to click closed (mm)
-        '--maze-thickness':  2,   # maze thickness (mm); the height of the maze walls
-        '--maze-complexity':  7, # [-10, +10]
-        '--maze-step':  5,        # maze spacing (mm); the (centerline) distance between one cell and the next
-        '--maze-margin':  1,      # maze top margin (mm)
-        '--outer-sides':  0,      # side count (0: round)
-    }
     default_args = [
+        '--parts',  parts,            # 6 parts, 5 mazes
+        '--core-diameter',  15,   # size of empty space in smallest
+        '--core-height',  85,     # height of the innermost piece
+        '--nubs',  2,             # count of nubs (2,3)
+        '--base-height',  8,      # "base height" (mm); the height of the base of the part
+        
+        '--clearance',  0.4,      # clearance between parts, radius (default, 0.4)
+
+        '--nub-horizontal',  1.0, # scale the size of the nubs
+        '--nub-vertical',    1.0,
+        '--nub-normal',      1.0,
+
+        '--helix',  0,            # non-helical (no slope to maze path?)
+        '--part-thickness',  2,   # wall thickness (mm) (wall of the cylinder, not the maze)
+        '--park-thickness',  0.7, # thickness of park ridge to click closed (mm)
+        '--maze-thickness',  2,   # maze thickness (mm); the height of the maze walls
+        '--maze-complexity',  7, # [-10, +10]
+        '--maze-step',  5,        # maze spacing (mm); the (centerline) distance between one cell and the next
+        '--maze-margin',  1,      # maze top margin (mm)
+        '--outer-sides',  0,      # side count (0: round)
+
         '--fix-nubs',
     ]
 
-    cmdline_kwargs = default_kwargs.copy()
-    for k,v in kwargs.items():
-        cmdline_kwargs[k] = v
-    cmdline_args = default_args.copy() + list(args)
+    cmdline_args = default_args.copy() + list(puzzlebox_args)
 
-    cmdline_kwargs['--part'] = part
+    cmdline_args.extend(['--part', part])
 
     puzzlebox_exe = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)),'../puzzlebox'))
 
@@ -83,7 +79,7 @@ def gen_maze( part, count=100, keep=3, parts=6, leaders=None, *args, **kwargs ):
     for i in range(count):
         with tempfile.NamedTemporaryFile(suffix='.scad',delete=False) as tmpscad:
             tmpscad.close() # release lock
-            command = [ puzzlebox_exe ] + list(map(str,(itertools.chain.from_iterable(cmdline_kwargs.items())))) + cmdline_args + [
+            command = [ puzzlebox_exe ] + list(map(str,cmdline_args)) + [
                 '--out-file', tmpscad.name,
             ]
             
@@ -94,7 +90,14 @@ def gen_maze( part, count=100, keep=3, parts=6, leaders=None, *args, **kwargs ):
             with open(tmpscad.name,'rt',encoding='utf-8') as _in:
                 scad = _in.read()
             try:
-                if part < parts:
+                score_maze = True
+                if '--inside' in cmdline_args:
+                    if part == 1:
+                        score_maze = False
+                else:
+                    if part >= parts:
+                        score_maze = False
+                if score_maze:
                     score,maze,metrics = analyze.score_file(tmpscad.name,weights='')
                     leaders.add(score,i,maze,metrics,scad)
                 else:
@@ -113,9 +116,8 @@ if __name__ == '__main__':
     parser.add_argument('--count',type=int,default=100)
     parser.add_argument('--keep',type=int,default=3)
     parser.add_argument('--part',type=int,default=0)
-    cmdline = parser.parse_args()
-
-    kwargs = dict()
+    parser.add_argument('--part-count',type=int,default=6)
+    cmdline,remaining = parser.parse_known_args()
 
     nubs = { 1:2, 2:2, 3:2, 4:2, 5:3, 6:3 }
 
@@ -127,13 +129,22 @@ if __name__ == '__main__':
     for part_number in part_number_range:
         lead = None
         count = cmdline.count
-        if part_number == 6:
-            count = 1
+        if '--inside' in remaining:
+            if part_number == 1:
+                count = 1
+        else:
+            if part_number == cmdline.part_count:
+                count = 1
 
-        for cplx in (7,10) if part_number < 6 else (7,):
-            kwargs['--maze-complexity'] = cplx
-            kwargs['--nubs'] = nubs[part_number]
-            lead = gen_maze(part=part_number, leaders=lead, count=count, **kwargs)
+        for cplx in (7,10) if part_number < cmdline.part_count else (7,):
+            puzzlebox_args = [
+                '--maze-complexity', cplx,
+                '--nubs', nubs[part_number],
+            ] + remaining
+
+            lead = gen_maze(puzzlebox_args, part=part_number, parts=cmdline.part_count,
+                            count=count, keep=cmdline.keep,
+                            leaders=lead)
 
         lead_index = 0
         for score,info in lead.keep:
