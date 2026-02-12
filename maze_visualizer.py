@@ -397,19 +397,174 @@ def visualize_maze_text(maze_data, show_invalid=False):
     return '\n'.join(reversed(output))
 
 
+def parse_ascii_maze(text):
+    """Parse ASCII maze format back into maze data.
+    
+    Expects format like:
+    +---+---+
+    |   |   |
+    +---+---+
+    
+    Returns maze_data dict with width, height, exit_x, and maze array.
+    """
+    lines = text.strip().split('\n')
+    if not lines:
+        raise ValueError("Empty maze text")
+    
+    # Skip header lines until we find the maze (starts with '+')
+    start_idx = 0
+    for i, line in enumerate(lines):
+        if line.strip() and line.strip()[0] == '+':
+            start_idx = i
+            break
+    
+    lines = lines[start_idx:]
+    
+    # Remove any leading/trailing empty lines
+    while lines and not lines[0].strip():
+        lines.pop(0)
+    while lines and not lines[-1].strip():
+        lines.pop()
+    
+    if len(lines) < 3:
+        raise ValueError("Maze too small (need at least 3 lines)")
+    
+    # Determine dimensions from grid
+    # First line should be row of +---+ patterns
+    first_line = lines[0]
+    
+    # Count cells by counting +---+ patterns
+    # Each cell is 4 chars wide: +---
+    # But rightmost + is shared, so width = (len-1) / 4
+    grid_width = len(first_line)
+    if (grid_width - 1) % 4 != 0:
+        raise ValueError(f"Invalid grid width: {grid_width}")
+    
+    width = (grid_width - 1) // 4
+    
+    # Height is (number of lines - 1) / 2
+    grid_height = len(lines)
+    if (grid_height - 1) % 2 != 0:
+        raise ValueError(f"Invalid grid height: {grid_height}")
+    
+    height = (grid_height - 1) // 2
+    
+    # Initialize maze array
+    maze = [[FLAG_INVALID for _ in range(height)] for _ in range(width)]
+    
+    # Track start and exit positions
+    start_x = None
+    exit_x = None
+    exit_y = None
+    
+    # Parse each cell
+    # Note: Display is reversed, so line 0 is Y=height-1
+    for display_y in range(height):
+        y = height - 1 - display_y  # Reverse Y coordinate
+        cell_row = display_y * 2 + 1  # Line containing cell content
+        
+        for x in range(width):
+            base_x = x * 4
+            
+            # Check cell content for markers
+            cell_content = lines[cell_row][base_x + 1:base_x + 4].strip()
+            
+            is_invalid = False
+            if 'X' in cell_content or '■' in cell_content:
+                is_invalid = True
+            
+            # Check for start/exit markers
+            if 'S' in cell_content:
+                start_x = x
+            if 'E' in cell_content:
+                exit_x = x
+                exit_y = y
+            
+            # Skip invalid cells unless they're start/exit
+            if is_invalid and 'S' not in cell_content and 'E' not in cell_content:
+                continue
+            
+            # Initialize cell with no passages
+            cell = 0x00
+            
+            # Check walls (absence of wall = passage exists)
+            # Remember: display is reversed, so UP/DOWN are swapped
+            
+            # Top wall in display = UP in physical maze = DOWN in data (swapped)
+            top_row = display_y * 2
+            if top_row >= 0:
+                top_wall = lines[top_row][base_x + 1:base_x + 4] if base_x + 4 <= len(lines[top_row]) else ""
+                if '---' not in top_wall:
+                    cell |= FLAG_UP  # No wall = passage (but swapped)
+            
+            # Bottom wall in display = DOWN in physical maze = UP in data (swapped)
+            bottom_row = display_y * 2 + 2
+            if bottom_row < len(lines):
+                bottom_wall = lines[bottom_row][base_x + 1:base_x + 4] if base_x + 4 <= len(lines[bottom_row]) else ""
+                if '---' not in bottom_wall:
+                    cell |= FLAG_DOWN  # No wall = passage (but swapped)
+            
+            # Left wall
+            if base_x < len(lines[cell_row]):
+                if lines[cell_row][base_x] != '|':
+                    cell |= FLAG_LEFT  # No wall = passage
+            
+            # Right wall
+            right_x = base_x + 4
+            if right_x < len(lines[cell_row]):
+                if lines[cell_row][right_x] != '|':
+                    cell |= FLAG_RIGHT  # No wall = passage
+            else:
+                # Line too short, assume no wall on right
+                cell |= FLAG_RIGHT
+            
+            maze[x][y] = cell
+    
+    # For exit cell, add INVALID flag (as per format requirement)
+    if exit_x is not None and exit_y is not None:
+        maze[exit_x][exit_y] |= FLAG_INVALID
+    
+    return {
+        'width': width,
+        'height': height,
+        'exit_x': exit_x,
+        'maze': maze
+    }
+
+
+def save_maze_file(maze_data, filename):
+    """Save maze data to PuzzleBox maze file format."""
+    with open(filename, 'w') as f:
+        f.write("PUZZLEBOX_MAZE v1.0\n")
+        f.write(f"WIDTH {maze_data['width']}\n")
+        f.write(f"HEIGHT {maze_data['height']}\n")
+        if maze_data.get('exit_x') is not None:
+            f.write(f"EXIT_X {maze_data['exit_x']}\n")
+        f.write("DATA\n")
+        
+        # Write maze data
+        maze = maze_data['maze']
+        for y in range(maze_data['height']):
+            row = ' '.join(f"{maze[x][y]:02x}" for x in range(maze_data['width']))
+            f.write(row + '\n')
+        
+        f.write("END\n")
+
+
 def main():
     parser = argparse.ArgumentParser(
-        description='Visualize PuzzleBox maze files',
+        description='Visualize and convert PuzzleBox maze files',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  %(prog)s maze.txt
-  %(prog)s maze.txt --ascii
-  %(prog)s maze.txt --show-invalid
-  %(prog)s maze.txt --info
+  %(prog)s maze.txt                      # Visualize with Unicode
+  %(prog)s maze.txt --ascii              # Visualize with ASCII
+  %(prog)s maze.txt --show-invalid       # Show invalid cells
+  %(prog)s maze.txt --info               # Show info only
+  %(prog)s ascii_maze.txt --from-ascii --output converted.maze
         """
     )
-    parser.add_argument('filename', help='Maze file to visualize')
+    parser.add_argument('filename', help='Maze file to visualize or convert')
     parser.add_argument('--ascii', action='store_true',
                        help='Use ASCII characters instead of Unicode')
     parser.add_argument('--text', action='store_true',
@@ -418,28 +573,63 @@ Examples:
                        help='Show invalid cells (normally hidden)')
     parser.add_argument('--info', action='store_true',
                        help='Show maze information only (no visualization)')
+    parser.add_argument('--from-ascii', action='store_true',
+                       help='Parse ASCII maze format and convert to maze data')
+    parser.add_argument('--output', '-o', metavar='FILE',
+                       help='Output file for converted maze (requires --from-ascii)')
     
     args = parser.parse_args()
     
     try:
-        maze_data = parse_maze_file(args.filename)
-        
-        # Print info
-        print(f"Maze: {args.filename}")
-        print(f"Dimensions: {maze_data['width']}x{maze_data['height']}")
-        if maze_data['exit_x'] is not None:
-            print(f"Exit X: {maze_data['exit_x']}")
-        print(f"Legend: S = Start (entry), E = Exit")
-        print()
-        
-        if not args.info:
-            # Visualize
-            if args.text:
-                print(visualize_maze_text(maze_data, args.show_invalid))
-            elif args.ascii:
-                print(visualize_maze_ascii(maze_data, args.show_invalid))
+        # Check for conversion mode
+        if args.from_ascii:
+            # Read ASCII maze and convert
+            with open(args.filename, 'r') as f:
+                text = f.read()
+            
+            maze_data = parse_ascii_maze(text)
+            
+            print(f"Parsed ASCII maze from: {args.filename}")
+            print(f"Dimensions: {maze_data['width']}x{maze_data['height']}")
+            if maze_data['exit_x'] is not None:
+                print(f"Exit X: {maze_data['exit_x']}")
+            
+            # Save if output specified
+            if args.output:
+                save_maze_file(maze_data, args.output)
+                print(f"Saved to: {args.output}")
             else:
-                print(visualize_maze_unicode(maze_data, args.show_invalid))
+                print("\nConverted maze data (use --output to save):")
+                print("DATA")
+                maze = maze_data['maze']
+                for y in range(maze_data['height']):
+                    row = ' '.join(f"{maze[x][y]:02x}" for x in range(maze_data['width']))
+                    print(row)
+                print("END")
+        else:
+            # Normal visualization mode
+            if args.output:
+                print("Error: --output requires --from-ascii", file=sys.stderr)
+                return 1
+            
+            maze_data = parse_maze_file(args.filename)
+            
+            # Print info
+            print(f"Maze: {args.filename}")
+            print(f"Dimensions: {maze_data['width']}x{maze_data['height']}")
+            if maze_data['exit_x'] is not None:
+                print(f"Exit X: {maze_data['exit_x']}")
+            print(f"Legend: S = Start (entry), E = Exit")
+            print()
+            
+            if not args.info:
+                # Visualize
+                if args.text:
+                    print(visualize_maze_text(maze_data, args.show_invalid))
+                elif args.ascii:
+                    print(visualize_maze_ascii(maze_data, args.show_invalid))
+                else:
+                    print(visualize_maze_unicode(maze_data, args.show_invalid))
     
     except FileNotFoundError:
         print(f"Error: File not found: {args.filename}", file=sys.stderr)
