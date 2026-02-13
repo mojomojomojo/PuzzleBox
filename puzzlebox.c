@@ -64,6 +64,7 @@ main (int argc, const char *argv[])
    double nubhorizontal = 1.0;  // Nub horizontal (circumferential) size multiplier
    double nubvertical = 1.0;    // Nub vertical (height) size multiplier
    double nubnormal = 1.0;      // Nub normal (radial depth) size multiplier
+   double nubdistance = 0;      // Distance from end to place nubs (reduces maze rows)
    double parkthickness = 0.7;
    double coregap = 0;
    double outerround = 2;
@@ -165,6 +166,8 @@ main (int argc, const char *argv[])
        "factor"},
       {"nub-normal", 0, POPT_ARG_DOUBLE | POPT_ARGFLAG_SHOW_DEFAULT, &nubnormal, 0, "Nub normal (radial depth) size multiplier",
        "factor"},
+      {"nub-distance", 0, POPT_ARG_DOUBLE | POPT_ARGFLAG_SHOW_DEFAULT, &nubdistance, 0, "Distance from end to place nubs (reduces maze rows)",
+       "mm"},
       {"fix-nubs", 0, POPT_ARG_NONE, &fixnubs, 0, "Fix nub position opposite maze exit"},
       {"outer-sides", 's', POPT_ARG_INT | (outersides ? POPT_ARGFLAG_SHOW_DEFAULT : 0), &outersides, 0, "Number of outer sides",
        "N (0=round)"},
@@ -966,8 +969,8 @@ main (int argc, const char *argv[])
       {                         // Make the maze
          W = ((int) ((r + (inside ? mazethickness : -mazethickness)) * 2 * M_PI / mazestep)) / nubs * nubs;     // Update W for actual maze
          double base = (inside ? basethickness : baseheight);
-         if (inside && part > 2)
-            base += baseheight; // Nubs don' t go all the way to the end if (inside && part == 2)
+         if ((inside && part > 1) || (!inside && part < parts))
+            base += nubdistance; // Move maze up so nubs can reach bottom row
          base += (coresolid ? coreheight : 0);  // First one is short...
          if (inside)
             base += basegap;
@@ -2596,7 +2599,7 @@ main (int argc, const char *argv[])
          else if (mirrorinside)
             my = -my;           // This is nub outside which is for inside maze
          double a = -da * 1.5;  // Centre A
-         double z = height - mazestep / 2 - (parkvertical ? 0 : mazestep / 8) - dz * 1.5 - my * 1.5;    // Centre Z
+         double z = height - mazestep / 2 - (parkvertical ? 0 : mazestep / 8) - dz * 1.5 - my * 1.5 - nubdistance;    // Centre Z
          fprintf (out, "rotate([0,0,%f])for(a=[0:%f:359])rotate([0,0,a])polyhedron(points=[", part_entrya, (double) 360 / nubs);
          r += (inside ? nubrclearance : -nubrclearance);        // Extra gap
          ri += (inside ? nubrclearance : -nubrclearance);       // Extra gap
