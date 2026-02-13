@@ -58,6 +58,7 @@ main (int argc, const char *argv[])
    double wallthickness = 1.2;
    double mazethickness = 2;
    double mazestep = 3;
+   double topspace = 0;         // Extra space above top of maze (before exit)
    double clearance = 0.4;      // General X/Y clearance for parts
    double nubrclearance = 0.1;  // Extra radius clearance for nub, should be less than clearance, can be -ve
    double nubzclearance = 0.2;  // Extra Z clearance (per /4 maze step)
@@ -147,6 +148,7 @@ main (int argc, const char *argv[])
       {"maze-thickness", 't', POPT_ARG_DOUBLE | POPT_ARGFLAG_SHOW_DEFAULT, &mazethickness, 0, "Maze thickness", "mm"},
       {"maze-step", 'z', POPT_ARG_DOUBLE | POPT_ARGFLAG_SHOW_DEFAULT, &mazestep, 0, "Maze spacing", "mm"},
       {"maze-margin", 'M', POPT_ARG_DOUBLE | (mazemargin ? POPT_ARGFLAG_SHOW_DEFAULT : 0), &mazemargin, 0, "Maze top margin", "mm"},
+      {"top-space", 'T', POPT_ARG_DOUBLE | (topspace ? POPT_ARGFLAG_SHOW_DEFAULT : 0), &topspace, 0, "Extra space above maze top (exit remains at top)", "mm"},
       {"maze-complexity", 'X', POPT_ARG_INT | (mazecomplexity ? POPT_ARGFLAG_SHOW_DEFAULT : 0), &mazecomplexity, 0,
        "Maze complexity", "-10 to 10"},
       {"park-thickness", 'p', POPT_ARG_DOUBLE | (parkthickness ? POPT_ARGFLAG_SHOW_DEFAULT : 0), &parkthickness, 0,
@@ -974,7 +976,7 @@ main (int argc, const char *argv[])
          base += (coresolid ? coreheight : 0);  // First one is short...
          if (inside)
             base += basegap;
-         double h = height - base - mazemargin - (parkvertical ? mazestep / 4 : 0) - mazestep / 8;
+         double h = height - base - mazemargin - topspace - (parkvertical ? mazestep / 4 : 0) - mazestep / 8;
          int H = (int) (h / mazestep);
          fprintf (out, "// Maze %s %d/%d\n", inside ? "inside" : "outside", W, H);
          double y0 = base + mazestep / 2 - mazestep * (helix + 1) + mazestep / 8;
