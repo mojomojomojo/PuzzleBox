@@ -641,7 +641,7 @@ main (int argc, const char *argv[])
       if (textslow)
          fprintf
             (out,
-             "module cuttext(){translate([0,0,-%d])minkowski(){rotate([0,0,22.5])cylinder(h=%lld,d1=%lld,d2=0,$fn=8);linear_extrude(height=%d,convexity=10)mirror([1,0,0])children();}}\n",
+             "module cuttext(){translate([0,0,-%lld])minkowski(){rotate([0,0,22.5])cylinder(h=%lld,d1=%lld,d2=0,$fn=8);linear_extrude(height=%lld,convexity=10)mirror([1,0,0])children();}}\n",
              SCALE, scaled (textdepth), scaled (textdepth), SCALE);
       else
          fprintf (out, "module cuttext(){linear_extrude(height=%lld,convexity=10,center=true)mirror([1,0,0])children();}\n",
@@ -2696,8 +2696,9 @@ main (int argc, const char *argv[])
             err (1, "Cannot open %s", tmp2);
          char buf[1024];
          int l;
+	 int dummy;
          while ((l = read (i, buf, sizeof (buf))) > 0)
-            write (STDOUT_FILENO, buf, l);
+	    dummy = write (STDOUT_FILENO, buf, l);
          close (i);
       }
       

@@ -16,5 +16,7 @@
 	Note: original strdupa uses alloca; using strdup is acceptable here. */
 # include <string.h>
 # include <stdlib.h>
-# define strdupa(s) strdup(s)
+# ifndef strdupa
+#  define strdupa(s) strdup(s)
+# endif
 #endif
