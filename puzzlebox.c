@@ -668,16 +668,17 @@ main (int argc, const char *argv[])
     * @param W Width of maze (number of cells around circumference)
     * @param H Height of maze (number of cells vertically)
     */
-   void save_maze (const char *filename, unsigned char *maze, int W, int H, int entry_x)
+   void save_maze (const char *filename, unsigned char *maze, int W, int H, int entry_x, int helix_val)
    {
       FILE *f = fopen (filename, "w");
       if (!f)
          err (1, "Cannot open maze file for writing: %s", filename);
       
       // Write header
-      fprintf (f, "PUZZLEBOX_MAZE v1.0\n");
+      fprintf (f, "PUZZLEBOX_MAZE v1.1\n");
       fprintf (f, "WIDTH %d\n", W);
       fprintf (f, "HEIGHT %d\n", H);
+      fprintf (f, "HELIX %d\n", helix_val);
       fprintf (f, "EXIT_X %d\n", entry_x);
       fprintf (f, "DATA\n");
       
@@ -700,9 +701,11 @@ main (int argc, const char *argv[])
    /**
     * Loads a pre-generated maze from a file in human-readable text format.
     * File format:
-    *   PUZZLEBOX_MAZE v1.0
+    *   PUZZLEBOX_MAZE v1.1
     *   WIDTH <W>
     *   HEIGHT <H>
+    *   HELIX <helix>
+    *   EXIT_X <X>
     *   DATA
     *   <hex bytes, one row per line>
     *   END
@@ -714,9 +717,10 @@ main (int argc, const char *argv[])
     * @param actual_W Pointer to store actual width read from file
     * @param actual_H Pointer to store actual height read from file
     * @param entry_x Pointer to store entry X position from file (can be NULL if not needed)
+    * @param helix_val Pointer to store helix value from file (can be NULL if not needed)
     * @return 0 on success, 1 on error
     */
-   int load_maze (const char *filename, unsigned char *maze, int expected_W, int expected_H, int *actual_W, int *actual_H, int *entry_x)
+   int load_maze (const char *filename, unsigned char *maze, int expected_W, int expected_H, int *actual_W, int *actual_H, int *entry_x, int *helix_val)
    {
       FILE *f = fopen (filename, "r");
       if (!f)
@@ -726,10 +730,22 @@ main (int argc, const char *argv[])
       }
       
       char line[16384];
-      int W = 0, H = 0, X = 0;
+      int W = 0, H = 0, X = 0, helix = 0;
+      int file_version = 0;  // 0=v1.0 (no helix), 1=v1.1 (with helix)
       
       // Read and validate header
-      if (!fgets (line, sizeof (line), f) || strncmp (line, "PUZZLEBOX_MAZE v1.0", 19) != 0)
+      if (!fgets (line, sizeof (line), f))
+      {
+         fclose (f);
+         warnx ("Cannot read header from %s", filename);
+         return 1;
+      }
+      
+      if (strncmp (line, "PUZZLEBOX_MAZE v1.1", 19) == 0)
+         file_version = 1;
+      else if (strncmp (line, "PUZZLEBOX_MAZE v1.0", 19) == 0)
+         file_version = 0;
+      else
       {
          fclose (f);
          warnx ("Invalid maze file header in %s", filename);
@@ -750,6 +766,17 @@ main (int argc, const char *argv[])
          fclose (f);
          warnx ("Invalid or missing HEIGHT in %s", filename);
          return 1;
+      }
+      
+      // Read HELIX (only in v1.1)
+      if (file_version >= 1)
+      {
+         if (!fgets (line, sizeof (line), f) || sscanf (line, "HELIX %d", &helix) != 1)
+         {
+            fclose (f);
+            warnx ("Invalid or missing HELIX in v1.1 file %s", filename);
+            return 1;
+         }
       }
       
       // Read EXIT_X (optional for backward compatibility with old ENTRY_X format)
@@ -841,6 +868,8 @@ main (int argc, const char *argv[])
       *actual_H = H;
       if (entry_x)
          *entry_x = X;
+      if (helix_val)
+         *helix_val = helix;
       return 0;
    }
 
@@ -1002,15 +1031,18 @@ main (int argc, const char *argv[])
          
          if (loadfile)
          {
-            int loaded_W, loaded_H;
-            if (load_maze (loadfile, (unsigned char *) maze, W, H, &loaded_W, &loaded_H, &maxx) == 0)
+            int loaded_W, loaded_H, loaded_helix = 0;
+            if (load_maze (loadfile, (unsigned char *) maze, W, H, &loaded_W, &loaded_H, &maxx, &loaded_helix) == 0)
             {
                // Successfully loaded maze
                if (loaded_W != W || loaded_H != H)
                   errx (1, "Loaded maze dimensions (%dx%d) don't match calculated dimensions (%dx%d) for %s maze",
                         loaded_W, loaded_H, W, H, inside ? "inside" : "outside");
+               if (loaded_helix != helix)
+                  warnx ("Warning: Loaded maze helix (%d) doesn't match current helix (%d) - maze may not work correctly",
+                        loaded_helix, helix);
                maze_loaded = 1;
-               fprintf (out, "// Loaded %s maze from %s (exit_x=%d)\n", inside ? "inside" : "outside", loadfile, maxx);
+               fprintf (out, "// Loaded %s maze from %s (exit_x=%d, helix=%d)\n", inside ? "inside" : "outside", loadfile, maxx, loaded_helix);
             }
             else
                errx (1, "Failed to load maze from %s", loadfile);
@@ -1269,8 +1301,8 @@ main (int argc, const char *argv[])
             // Save generated maze if requested
             if (savefile)
             {
-               save_maze (savefile, (unsigned char *) maze, W, H, maxx);
-               fprintf (out, "// Saved %s maze to %s (exit_x=%d)\n", inside ? "inside" : "outside", savefile, maxx);
+               save_maze (savefile, (unsigned char *) maze, W, H, maxx, helix);
+               fprintf (out, "// Saved %s maze to %s (exit_x=%d, helix=%d)\n", inside ? "inside" : "outside", savefile, maxx, helix);
             }
          }  // End of maze generation block
          else
@@ -1367,10 +1399,12 @@ main (int argc, const char *argv[])
                qtail++;
                visited[maxx][maxY] = 1;
                
-               // Copy start cell to opposite side (rotate around Z axis only)
+               // Copy start cell to opposite side accounting for helix
+               // When rotating by W/nubs around cylinder, vertical position shifts by helix * (W/nubs)
                int opp_x = (maxx + W / nubs) % W;
-               int opp_y = maxY;  // Same Y position, no helix offset
-               maze_viz[opp_x][opp_y] = maze_viz[maxx][maxY];  // Copy maze data from current cell to opposite side
+               int opp_y = maxY + helix * (W / nubs);  // Shift Y position due to helix
+               if (opp_y >= 0 && opp_y < H)
+                  maze_viz[opp_x][opp_y] = maze_viz[maxx][maxY];  // Copy maze data from current cell to opposite side
                
                while (qhead < qtail)
                {
@@ -1390,10 +1424,11 @@ main (int argc, const char *argv[])
                         queueX[qtail] = nx;
                         queueY[qtail] = ny;
                         qtail++;
-                        // Copy to opposite side (rotate around Z axis only)
+                        // Copy to opposite side accounting for helix
                         int opp_x = (nx + W / nubs) % W;
-                        int opp_y = ny;  // Same Y position, no helix offset
-                        maze_viz[opp_x][opp_y] = maze_viz[nx][ny];  // Copy maze data from current cell to opposite side
+                        int opp_y = ny + helix * (W / nubs);  // Shift Y position due to helix
+                        if (opp_y >= 0 && opp_y < H)
+                           maze_viz[opp_x][opp_y] = maze_viz[nx][ny];
                      }
                   }
                   // Left
@@ -1407,10 +1442,11 @@ main (int argc, const char *argv[])
                         queueX[qtail] = nx;
                         queueY[qtail] = ny;
                         qtail++;
-                        // Copy to opposite side (rotate around Z axis only)
+                        // Copy to opposite side accounting for helix
                         int opp_x = (nx + W / nubs) % W;
-                        int opp_y = ny;  // Same Y position, no helix offset
-                        maze_viz[opp_x][opp_y] = maze_viz[nx][ny];  // Copy maze data from current cell to opposite side
+                        int opp_y = ny + helix * (W / nubs);  // Shift Y position due to helix
+                        if (opp_y >= 0 && opp_y < H)
+                           maze_viz[opp_x][opp_y] = maze_viz[nx][ny];
                      }
                   }
                   // Up
@@ -1424,10 +1460,11 @@ main (int argc, const char *argv[])
                         queueX[qtail] = nx;
                         queueY[qtail] = ny;
                         qtail++;
-                        // Copy to opposite side (rotate around Z axis only)
+                        // Copy to opposite side accounting for helix
                         int opp_x = (nx + W / nubs) % W;
-                        int opp_y = ny;  // Same Y position, no helix offset
-                        maze_viz[opp_x][opp_y] = maze_viz[nx][ny];  // Copy maze data from current cell to opposite side
+                        int opp_y = ny + helix * (W / nubs);  // Shift Y position due to helix
+                        if (opp_y >= 0 && opp_y < H)
+                           maze_viz[opp_x][opp_y] = maze_viz[nx][ny];
                      }
                   }
                   // Down
@@ -1441,10 +1478,11 @@ main (int argc, const char *argv[])
                         queueX[qtail] = nx;
                         queueY[qtail] = ny;
                         qtail++;
-                        // Copy to opposite side (rotate around Z axis only)
+                        // Copy to opposite side accounting for helix
                         int opp_x = (nx + W / nubs) % W;
-                        int opp_y = ny;  // Same Y position, no helix offset
-                        maze_viz[opp_x][opp_y] = maze_viz[nx][ny];  // Copy maze data from current cell to opposite side
+                        int opp_y = ny + helix * (W / nubs);  // Shift Y position due to helix
+                        if (opp_y >= 0 && opp_y < H)
+                           maze_viz[opp_x][opp_y] = maze_viz[nx][ny];
                      }
                   }
                }

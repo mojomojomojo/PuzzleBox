@@ -405,18 +405,20 @@ def parse_ascii_maze(text):
     |   |   |
     +---+---+
     
-    Returns maze_data dict with width, height, exit_x, and maze array.
+    Returns maze_data dict with width, height, exit_x, maze array, and headers.
     """
     lines = text.strip().split('\n')
     if not lines:
         raise ValueError("Empty maze text")
     
-    # Skip header lines until we find the maze (starts with '+')
+    # Collect header lines until we find the maze (starts with '+')
+    headers = []
     start_idx = 0
     for i, line in enumerate(lines):
         if line.strip() and line.strip()[0] == '+':
             start_idx = i
             break
+        headers.append(line)
     
     lines = lines[start_idx:]
     
@@ -528,18 +530,24 @@ def parse_ascii_maze(text):
         'width': width,
         'height': height,
         'exit_x': exit_x,
-        'maze': maze
+        'maze': maze,
+        'headers': headers
     }
 
 
 def save_maze_file(maze_data, filename):
     """Save maze data to PuzzleBox maze file format."""
     with open(filename, 'w') as f:
-        f.write("PUZZLEBOX_MAZE v1.0\n")
-        f.write(f"WIDTH {maze_data['width']}\n")
-        f.write(f"HEIGHT {maze_data['height']}\n")
-        if maze_data.get('exit_x') is not None:
-            f.write(f"EXIT_X {maze_data['exit_x']}\n")
+        # Use preserved headers if available, otherwise generate standard headers
+        if 'headers' in maze_data and maze_data['headers']:
+            for header in maze_data['headers']:
+                f.write(header + '\n')
+        else:
+            f.write("PUZZLEBOX_MAZE v1.0\n")
+            f.write(f"WIDTH {maze_data['width']}\n")
+            f.write(f"HEIGHT {maze_data['height']}\n")
+            if maze_data.get('exit_x') is not None:
+                f.write(f"EXIT_X {maze_data['exit_x']}\n")
         f.write("DATA\n")
         
         # Write maze data
@@ -589,17 +597,20 @@ Examples:
             
             maze_data = parse_ascii_maze(text)
             
-            print(f"Parsed ASCII maze from: {args.filename}")
-            print(f"Dimensions: {maze_data['width']}x{maze_data['height']}")
-            if maze_data['exit_x'] is not None:
-                print(f"Exit X: {maze_data['exit_x']}")
-            
-            # Save if output specified
+            # Save if output specified, otherwise write to stdout
             if args.output:
                 save_maze_file(maze_data, args.output)
-                print(f"Saved to: {args.output}")
             else:
-                print("\nConverted maze data (use --output to save):")
+                # Write headers
+                if 'headers' in maze_data and maze_data['headers']:
+                    for header in maze_data['headers']:
+                        print(header)
+                else:
+                    print("PUZZLEBOX_MAZE v1.0")
+                    print(f"WIDTH {maze_data['width']}")
+                    print(f"HEIGHT {maze_data['height']}")
+                    if maze_data.get('exit_x') is not None:
+                        print(f"EXIT_X {maze_data['exit_x']}")
                 print("DATA")
                 maze = maze_data['maze']
                 for y in range(maze_data['height']):
