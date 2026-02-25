@@ -72,23 +72,44 @@ class Maze:
     def find_entry_exit_points(self):
         """Find actual entry and exit points by scanning the maze grid.
         
-        Entry point is at x=0. For helix <= 1, entry is at y=0 (bottom).
-        For helix > 1, entry is at y=(helix-1).
-        Exit points are cells at y=H-1 (top) that are not invalid.
+        Uses entrance_x/maxy_exit from MAZE_START if available (set by parse_machine_readable).
+        Falls back to scanning for the first non-invalid cell at the bottom and top rows.
         """
         self.starts = []
         self.exits = []
         
-        # Entry is at x=0, y depends on helix
-        entry_y = 0 if self.helix <= 1 else (self.helix - 1)
-        # Only check FLAGI bit, not connection count - entry cells may have flags=0x00
-        if entry_y < self.H and not (self.grid[entry_y][0] & FLAGI):
-            self.starts.append((0, entry_y))
+        # Use entrance_x from MAZE_START if available and valid
+        entr_x = getattr(self, 'entrance_x', -1)
+        if entr_x >= 0:
+            # entrance_x is in absolute C-space X; entry Y is always minY (grid[0])
+            if not (self.grid[0][entr_x] & FLAGI):
+                self.starts.append((entr_x, 0))
         
-        # Find exits at top (y=H-1) - any non-invalid cell
-        for x in range(self.W):
-            if not self.is_invalid(x, self.H - 1):
-                self.exits.append((x, self.H - 1))
+        if not self.starts:
+            # Fallback: scan bottom row for first non-invalid cell
+            for x in range(self.W):
+                if not self.is_invalid(x, 0):
+                    self.starts.append((x, 0))
+                    break
+        
+        # Use maxy_exit from MAZE_START for the exit (may differ from H-1 for helix mazes)
+        exit_y_c = getattr(self, 'maxy_exit', self.maxy)  # C-space row of exit
+        exit_y = exit_y_c - self.miny  # Python-space y index
+        exit_x_val = getattr(self, 'exit_x_val', -1)
+        
+        if exit_x_val >= 0 and 0 <= exit_y < self.H:
+            # Use the known exit from MAZE_START
+            self.exits.append((exit_x_val, exit_y))
+        else:
+            # Fallback: find exits at top (y=H-1) - any non-invalid cell
+            for x in range(self.W):
+                if not self.is_invalid(x, self.H - 1):
+                    self.exits.append((x, self.H - 1))
+            # Also check exit_y row if different from H-1
+            if exit_y != self.H - 1 and 0 <= exit_y < self.H:
+                for x in range(self.W):
+                    if not self.is_invalid(x, exit_y):
+                        self.exits.append((x, exit_y))
 
     def set_row(self, row_number: int, values: List[int]):
         """Set a maze row by the original MAZE_ROW number.
@@ -390,7 +411,7 @@ def score_maze( maze: Maze ) -> float:
     return score
 
 def parse_machine_readable(lines: List[str]) -> Maze:
-    start_re = re.compile(r"MAZE_START\s+(INSIDE|OUTSIDE)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(-?\d+)\s+(-?\d+)(?:\s+(-?\d+)\s+(-?\d+))?", re.I)
+    start_re = re.compile(r"MAZE_START\s+(INSIDE|OUTSIDE)\s+(\d+)\s+(\d+)\s+(\d+)\s+(-?\d+)\s+(-?\d+)\s+(-?\d+)(?:\s+(-?\d+)\s+(-?\d+)(?:\s+(-?\d+))?)?", re.I)
     row_re = re.compile(r"MAZE_ROW\s+(-?\d+)\s+(.+)", re.I)
 
     # locate machine-readable block start
@@ -422,8 +443,14 @@ def parse_machine_readable(lines: List[str]) -> Maze:
             helix = int(m.group(5))
             miny = int(m.group(6))
             maxy = int(m.group(7))
-            # entrance_x and exit_x at positions 8,9 are not used (often -1)
+            # entrance_x and exit_x at positions 8,9; maxy_exit at position 10
+            entrance_x = int(m.group(8)) if m.group(8) is not None else -1
+            exit_x = int(m.group(9)) if m.group(9) is not None else -1
+            maxy_exit = int(m.group(10)) if m.group(10) is not None else maxy
             maze = Maze(W, H, orientation, miny, maxy, maxx=maxx, helix=helix, part=part, part_text=part_text)
+            maze.entrance_x = entrance_x
+            maze.exit_x_val = exit_x
+            maze.maxy_exit = maxy_exit
             continue
 
         m2 = row_re.search(line)
@@ -587,7 +614,9 @@ def extract_human_readable(lines: List[str], mr_idx: int) -> Dict[str, Optional[
     while i >= 0:
         s = lines[i].rstrip('\n')
         if s.strip().startswith('//'):
-            s = s.strip()[2:].lstrip()  # Strip // and leading space
+            s = s.strip()[2:]  # Strip //
+            if s.startswith(' '):
+                s = s[1:]  # Strip exactly one optional space (the comment separator)
         
         if 'MAZE WITH SOLUTION' in s:
             # Don't include the marker line itself

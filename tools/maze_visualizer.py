@@ -28,6 +28,7 @@ def parse_maze_file(filename):
     
     width = None
     height = None
+    helix = None
     exit_x = None
     data_start = None
     
@@ -37,6 +38,8 @@ def parse_maze_file(filename):
             width = int(line.split()[1])
         elif line.startswith('HEIGHT'):
             height = int(line.split()[1])
+        elif line.startswith('HELIX'):
+            helix = int(line.split()[1])
         elif line.startswith('EXIT_X') or line.startswith('ENTRY_X'):  # Accept both formats
             exit_x = int(line.split()[1])
         elif line.startswith('DATA'):
@@ -67,6 +70,7 @@ def parse_maze_file(filename):
     return {
         'width': width,
         'height': height,
+        'helix': helix,
         'exit_x': exit_x,
         'maze': maze
     }
@@ -420,6 +424,27 @@ def parse_ascii_maze(text):
             break
         headers.append(line)
     
+    # Parse structured fields from header lines (strip leading comment chars)
+    helix = None
+    header_exit_x = None
+    for hline in headers:
+        # Strip comment prefixes (// or #) and whitespace
+        stripped = hline.strip().lstrip('/').lstrip('#').strip()
+        tokens = stripped.split()
+        if not tokens:
+            continue
+        key = tokens[0].upper()
+        if key == 'HELIX' and len(tokens) >= 2:
+            try:
+                helix = int(tokens[1])
+            except ValueError:
+                pass
+        elif key in ('EXIT_X', 'ENTRY_X') and len(tokens) >= 2:
+            try:
+                header_exit_x = int(tokens[1])
+            except ValueError:
+                pass
+
     lines = lines[start_idx:]
     
     # Remove any leading/trailing empty lines
@@ -529,7 +554,8 @@ def parse_ascii_maze(text):
     return {
         'width': width,
         'height': height,
-        'exit_x': exit_x,
+        'helix': helix,
+        'exit_x': exit_x if exit_x is not None else header_exit_x,
         'maze': maze,
         'headers': headers
     }
@@ -538,16 +564,13 @@ def parse_ascii_maze(text):
 def save_maze_file(maze_data, filename):
     """Save maze data to PuzzleBox maze file format."""
     with open(filename, 'w') as f:
-        # Use preserved headers if available, otherwise generate standard headers
-        if 'headers' in maze_data and maze_data['headers']:
-            for header in maze_data['headers']:
-                f.write(header + '\n')
-        else:
-            f.write("PUZZLEBOX_MAZE v1.0\n")
-            f.write(f"WIDTH {maze_data['width']}\n")
-            f.write(f"HEIGHT {maze_data['height']}\n")
-            if maze_data.get('exit_x') is not None:
-                f.write(f"EXIT_X {maze_data['exit_x']}\n")
+        f.write("PUZZLEBOX_MAZE v1.1\n")
+        f.write(f"WIDTH {maze_data['width']}\n")
+        f.write(f"HEIGHT {maze_data['height']}\n")
+        if maze_data.get('helix') is not None:
+            f.write(f"HELIX {maze_data['helix']}\n")
+        if maze_data.get('exit_x') is not None:
+            f.write(f"EXIT_X {maze_data['exit_x']}\n")
         f.write("DATA\n")
         
         # Write maze data
@@ -601,16 +624,13 @@ Examples:
             if args.output:
                 save_maze_file(maze_data, args.output)
             else:
-                # Write headers
-                if 'headers' in maze_data and maze_data['headers']:
-                    for header in maze_data['headers']:
-                        print(header)
-                else:
-                    print("PUZZLEBOX_MAZE v1.0")
-                    print(f"WIDTH {maze_data['width']}")
-                    print(f"HEIGHT {maze_data['height']}")
-                    if maze_data.get('exit_x') is not None:
-                        print(f"EXIT_X {maze_data['exit_x']}")
+                print("PUZZLEBOX_MAZE v1.1")
+                print(f"WIDTH {maze_data['width']}")
+                print(f"HEIGHT {maze_data['height']}")
+                if maze_data.get('helix') is not None:
+                    print(f"HELIX {maze_data['helix']}")
+                if maze_data.get('exit_x') is not None:
+                    print(f"EXIT_X {maze_data['exit_x']}")
                 print("DATA")
                 maze = maze_data['maze']
                 for y in range(maze_data['height']):
@@ -628,6 +648,8 @@ Examples:
             # Print info
             print(f"Maze: {args.filename}")
             print(f"Dimensions: {maze_data['width']}x{maze_data['height']}")
+            if maze_data.get('helix') is not None:
+                print(f"Helix: {maze_data['helix']}")
             if maze_data['exit_x'] is not None:
                 print(f"Exit X: {maze_data['exit_x']}")
             print(f"Legend: S = Start (entry), E = Exit")

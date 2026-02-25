@@ -779,6 +779,7 @@ def main(argv):
     p.add_argument('--parkvertical', action='store_true')
     p.add_argument('--park-thickness', dest='park_thickness', type=float, default=0.7)
     p.add_argument('--park-vertical', action='store_true')
+    p.add_argument('--horizontal-mirror', dest='horizontal_mirror', action='store_true', help='Mirror maze horizontally (circumferentially)')
     p.add_argument('--maze-margin', '--mazemargin', dest='mazemargin', type=float, default=1.0)
     p.add_argument('--inside', action='store_true')
     p.add_argument('--text-end', dest='text_end', type=str, default=None)

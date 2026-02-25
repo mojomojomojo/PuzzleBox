@@ -141,7 +141,7 @@ main (int argc, const char *argv[])
       {"inside", 'i', POPT_ARG_NONE, &inside, 0, "Maze on inside (hard)"},
       {"flip", 'f', POPT_ARG_NONE, &flip, 0, "Alternating inside/outside maze"},
       {"nubs", 'N', POPT_ARG_INT | POPT_ARGFLAG_SHOW_DEFAULT, &nubs, 0, "Nubs", "N"},
-      {"helix", 'H', POPT_ARG_INT | POPT_ARGFLAG_SHOW_DEFAULT, &helix, 0, "Helix", "N (0 for non helical)"},
+      {"helix", 'H', POPT_ARG_INT | POPT_ARGFLAG_SHOW_DEFAULT, &helix, 0, "Helix", "N (0 for non helical, negative for reverse/clockwise)"},
       {"base-height", 'b', POPT_ARG_DOUBLE | POPT_ARGFLAG_SHOW_DEFAULT, &baseheight, 0, "Base height", "mm"},
       {"core-solid", 'q', POPT_ARG_NONE, &coresolid, 0, "Core solid (content is in part 2)"},
       {"part-thickness", 'w', POPT_ARG_DOUBLE | POPT_ARGFLAG_SHOW_DEFAULT, &wallthickness, 0, "Wall thickness", "mm"},
@@ -431,15 +431,16 @@ main (int argc, const char *argv[])
       textsidescale = 0;
       textsides = NULL;
    }
-   if (helix && nubs > 1 && nubs < helix)
+   int abs_helix = helix < 0 ? -helix : helix;
+   if (helix && nubs > 1 && nubs < abs_helix)
    {
-      if (!(helix % 2) && nubs <= helix / 2)
-         nubs = helix / 2;
+      if (!(abs_helix % 2) && nubs <= abs_helix / 2)
+         nubs = abs_helix / 2;
       else
-         nubs = helix;
+         nubs = abs_helix;
    }
-   if (helix && nubs > helix)
-      nubs = helix;
+   if (helix && nubs > abs_helix)
+      nubs = abs_helix;
    if (gripdepth > (baseheight - outerround) / 5)
       gripdepth = (baseheight - outerround) / 5;
    if (gripdepth > mazethickness)
@@ -1007,17 +1008,19 @@ main (int argc, const char *argv[])
             base += basegap;
          double h = height - base - mazemargin - topspace - (parkvertical ? mazestep / 4 : 0) - mazestep / 8;
          int H = (int) (h / mazestep);
-         fprintf (out, "// Maze %s %d/%d\n", inside ? "inside" : "outside", W, H);
-         double y0 = base + mazestep / 2 - mazestep * (helix + 1) + mazestep / 8;
-         H += 2 + helix;        // Allow one above, one below and helix below
+         int abs_helix = helix < 0 ? -helix : helix;
+         fprintf (out, "// Maze %s %d/%d helix=%d (%s)\n", inside ? "inside" : "outside", W, H, helix,
+                  helix > 0 ? "counter-clockwise" : helix < 0 ? "clockwise" : "none");
+         double y0 = base + mazestep / 2 - mazestep * (abs_helix + 1) + mazestep / 8;
+         H += 2 + abs_helix;    // Allow one above, one below and abs(helix) below
          if (W < 3 || H < 1)
             errx (1, "Too small");
          double a = 0,
             dy = 0;
          if (helix)
          {
-            a = atan (mazestep * helix / r / 2 / M_PI) * 180 / M_PI;
-            dy = mazestep * helix / W;
+            a = atan (mazestep * abs_helix / r / 2 / M_PI) * 180 / M_PI;
+            dy = mazestep * helix / W;  // signed: controls twist direction
          }
          unsigned char maze[W][H];
          memset (maze, 0, sizeof (unsigned char) * W * H);
@@ -1027,6 +1030,7 @@ main (int argc, const char *argv[])
          const char *savefile = inside ? savemazeinside : savemazeoutside;
          int maze_loaded = 0;
          int maxx = 0;  // Entry point for maze (declare at function scope)
+         int maxy_exit = -1;  // Y row of exit (where DFS reached top) — may differ from maxY
          double margin = mazemargin;  // Maze margin (declare at function scope)
          
          if (loadfile)
@@ -1085,8 +1089,8 @@ main (int argc, const char *argv[])
                   x -= W;
                   y += helix;
                }
-               if (helix == nubs)
-                  y--;
+               if (abs_helix == nubs)   // adjust for half-rotation height offset
+                  y -= (helix > 0 ? 1 : -1);  // +helix: band climbs right, correct down; -helix: band falls right, correct up
             }
             return v;
          }
@@ -1104,12 +1108,12 @@ main (int argc, const char *argv[])
             // Final park point
             if (parkvertical)
             {
-               for (N = 0; N < helix + 2; N++)  // Down to final
+               for (N = 0; N < abs_helix + 2; N++)  // Down to final
                {
                   maze[0][N] |= FLAGU + FLAGD;
                   maze[X = 0][Y = N + 1] |= FLAGD;
                }
-               if (!inside && !noa && W / nubs > 2 && H > helix + 4)
+               if (!inside && !noa && W / nubs > 2 && H > abs_helix + 4)
                {                // An "A" at finish
                   maze[X][Y] |= FLAGD | FLAGU | FLAGR;
                   maze[X][Y + 1] |= FLAGD | FLAGR;
@@ -1121,17 +1125,38 @@ main (int argc, const char *argv[])
                }
             } else              // Left to final
             {
-               maze[0][helix + 1] |= FLAGR;
-               maze[X = 1][Y = helix + 1] |= FLAGL;
-               if (!inside && !noa && W / nubs > 3 && H > helix + 3)
-               {                // An "A" at finish
-                  maze[X][Y] |= FLAGL | FLAGR | FLAGU;
-                  maze[X + 1][Y] |= FLAGL | FLAGU;
-                  maze[X + 1][Y + 1] |= FLAGL | FLAGD;
-                  maze[X][Y + 1] |= FLAGL | FLAGR | FLAGD;
-                  maze[X - 1][Y + 1] |= FLAGR;
-                  X--;
-                  Y++;
+               if (helix < 0)
+               {                // Negative helix: connect park slot rightward at row abs_helix+2
+                  //   (col 1 at row abs_helix+1 is FLAGI so we step up one row, same as
+                  //    positive helix uses FLAGR at abs_helix+1 and F=(1,abs_helix+1))
+                  maze[0][abs_helix + 2] |= FLAGR;
+                  maze[X = 1][Y = abs_helix + 2] |= FLAGL;
+                  if (!inside && !noa && W / nubs > 3 && H > abs_helix + 4)
+                  {                // An "A" at finish: 3x2 layout mirroring positive helix
+                     // Bottom row (h+2): park=(0,h+2) — F=col1, E=col2, D=col3
+                     maze[X][Y] |= FLAGL | FLAGR | FLAGU;     // F(1,h+2): left=park, right=E, up=B
+                     maze[X + 1][Y] |= FLAGL | FLAGU;         // E(2,h+2): left=F, up=A  (dead end)
+                     // Top row (h+3): A=col2, B=col1, C=col0
+                     maze[X + 1][Y + 1] |= FLAGD | FLAGL;     // A(2,h+3): down=E, left=B  (dead end)
+                     maze[X][Y + 1] |= FLAGR | FLAGD | FLAGL; // B(1,h+3): right=A, down=F, left=C
+                     maze[X - 1][Y + 1] |= FLAGR;             // C(0,h+3): right=B — DFS continues up
+                     X--;
+                     Y++;
+                  }
+               } else
+               {
+                  maze[0][abs_helix + 1] |= FLAGR;
+                  maze[X = 1][Y = abs_helix + 1] |= FLAGL;
+                  if (!inside && !noa && W / nubs > 3 && H > abs_helix + 3)
+                  {                // An "A" at finish
+                     maze[X][Y] |= FLAGL | FLAGR | FLAGU;
+                     maze[X + 1][Y] |= FLAGL | FLAGU;
+                     maze[X + 1][Y + 1] |= FLAGL | FLAGD;
+                     maze[X][Y + 1] |= FLAGL | FLAGR | FLAGD;
+                     maze[X - 1][Y + 1] |= FLAGR;
+                     X--;
+                     Y++;
+                  }
                }
             }
             // Make maze
@@ -1243,6 +1268,7 @@ main (int argc, const char *argv[])
                   {             // Longest path that reaches top
                      max = p->n;
                      maxx = X;
+                     maxy_exit = Y;  // Record exit Y (cell below FLAGI boundary)
                   }
                   // Next point to consider
                   pos_t *next = malloc (sizeof (*next));
@@ -1317,11 +1343,16 @@ main (int argc, const char *argv[])
 
          // Output maze visualization
             fprintf (out, "//\n");
-            fprintf (out, "// ============ MAZE VISUALIZATION (%s, %dx%d) ============\n", inside ? "INSIDE" : "OUTSIDE", W, H);
+            fprintf (out, "// ============ MAZE VISUALIZATION (%s, %dx%d, helix=%d) ============\n", inside ? "INSIDE" : "OUTSIDE", W, H, helix);
             fprintf (out, "//\n");
             fprintf (out, "// Human-readable maze (viewed from outside, unwrapped):\n");
             fprintf (out, "// Legend: + = corner, - = horizontal wall, | = vertical wall, # = invalid, E = exit, space = passage\n");
-            fprintf (out, "// Note: Maze wraps horizontally (cylinder) - leftmost and rightmost edges connect\n");
+            if (helix > 0)
+               fprintf (out, "// Note: Maze wraps helically - crossing the seam shifts up %d row(s) (counter-clockwise)\n", abs_helix);
+            else if (helix < 0)
+               fprintf (out, "// Note: Maze wraps helically - crossing the seam shifts down %d row(s) (clockwise)\n", abs_helix);
+            else
+               fprintf (out, "// Note: Maze wraps horizontally (cylinder) - leftmost and rightmost edges connect\n");
             fprintf (out, "// Note: With %d nubs, the maze pattern repeats every %d cells around the circumference\n", nubs, W / nubs);
             fprintf (out, "//\n");
             
@@ -1329,11 +1360,16 @@ main (int argc, const char *argv[])
             if (stl)
             {
                appendmazedata ("\n");
-               appendmazedata ("============ MAZE VISUALIZATION (%s, %dx%d) ============\n", inside ? "INSIDE" : "OUTSIDE", W, H);
+               appendmazedata ("============ MAZE VISUALIZATION (%s, %dx%d, helix=%d) ============\n", inside ? "INSIDE" : "OUTSIDE", W, H, helix);
                appendmazedata ("\n");
                appendmazedata ("Human-readable maze (viewed from outside, unwrapped):\n");
                appendmazedata ("Legend: + = corner, - = horizontal wall, | = vertical wall, # = invalid, E = exit, space = passage\n");
-               appendmazedata ("Note: Maze wraps horizontally (cylinder) - leftmost and rightmost edges connect\n");
+               if (helix > 0)
+                  appendmazedata ("Note: Maze wraps helically - crossing the seam shifts up %d row(s) (counter-clockwise)\n", abs_helix);
+               else if (helix < 0)
+                  appendmazedata ("Note: Maze wraps helically - crossing the seam shifts down %d row(s) (clockwise)\n", abs_helix);
+               else
+                  appendmazedata ("Note: Maze wraps horizontally (cylinder) - leftmost and rightmost edges connect\n");
                appendmazedata ("Note: With %d nubs, the maze pattern repeats every %d cells around the circumference\n", nubs, W / nubs);
                appendmazedata ("\n");
             }
@@ -1376,9 +1412,9 @@ main (int argc, const char *argv[])
                }
             }
             
-            fprintf (out, "// Showing rows %d to %d (valid maze area)\n", minY, maxY);
+            fprintf (out, "// Showing rows %d to %d (valid maze area, helix=%d)\n", minY, maxY, helix);
             if (stl)
-               appendmazedata ("Showing rows %d to %d (valid maze area)\n", minY, maxY);
+               appendmazedata ("Showing rows %d to %d (valid maze area, helix=%d)\n", minY, maxY, helix);
             
             // Create a copy of maze data for visualization
             unsigned char maze_viz[W][H];
@@ -1393,18 +1429,19 @@ main (int argc, const char *argv[])
                char visited[W][H];
                memset(visited, 0, sizeof(visited));
                
-               // Start at the entry point
+               // Start at the entry point (use maxy_exit if available)
+               int viz_start_y = (maxy_exit >= 0) ? maxy_exit : maxY;
                queueX[qtail] = maxx;
-               queueY[qtail] = maxY;
+               queueY[qtail] = viz_start_y;
                qtail++;
-               visited[maxx][maxY] = 1;
+               visited[maxx][viz_start_y] = 1;
                
                // Copy start cell to opposite side accounting for helix
                // When rotating by W/nubs around cylinder, vertical position shifts by helix * (W/nubs)
                int opp_x = (maxx + W / nubs) % W;
-               int opp_y = maxY + helix * (W / nubs);  // Shift Y position due to helix
+               int opp_y = viz_start_y + helix * (W / nubs);  // Shift Y position due to helix
                if (opp_y >= 0 && opp_y < H)
-                  maze_viz[opp_x][opp_y] = maze_viz[maxx][maxY];  // Copy maze data from current cell to opposite side
+                  maze_viz[opp_x][opp_y] = maze_viz[maxx][viz_start_y];  // Copy maze data from current cell to opposite side
                
                while (qhead < qtail)
                {
@@ -1494,21 +1531,17 @@ main (int argc, const char *argv[])
             memset(solution, 0, sizeof(solution));
             memset(reachable, 0, sizeof(reachable));
             
-            // Find entrance at bottom (minY) - look for cell with passage down
-            int entrance_x = -1;
+            // The park connector is always at col 0, row = abs_helix+1 (positive/zero helix)
+            // or abs_helix+2 (negative helix).  This is minY for helix=0, minY+1 otherwise.
+            int entrance_x = 0;
+            int entrance_y = abs_helix + (helix < 0 ? 2 : 1);
 	    int _exit_x = -1;
-            for (X = 0; X < W / nubs; X++)  // Only search first sector
-            {
-               if (!(maze[X][minY] & FLAGI))
-               {
-                  entrance_x = X;
-                  break;
-               }
-            }
             
-            if (entrance_x >= 0)
+            if (entrance_y >= minY && entrance_y <= maxY)
             {
                // BFS to find path from entrance to exit
+               // Use maxy_exit if available (actual DFS exit row), otherwise fall back to maxY
+               int target_y = (maxy_exit >= 0) ? maxy_exit : maxY;
                int queueX[W * H], queueY[W * H];
                int parentX[W][H], parentY[W][H];
                int qhead = 0, qtail = 0;
@@ -1518,11 +1551,11 @@ main (int argc, const char *argv[])
                memset(parentY, -1, sizeof(parentY));
                
                queueX[qtail] = entrance_x;
-               queueY[qtail] = minY;
+               queueY[qtail] = entrance_y;
                qtail++;
-               visited[entrance_x][minY] = 1;
-               parentX[entrance_x][minY] = entrance_x;
-               parentY[entrance_x][minY] = minY;
+               visited[entrance_x][entrance_y] = 1;
+               parentX[entrance_x][entrance_y] = entrance_x;
+               parentY[entrance_x][entrance_y] = entrance_y;
                
                int found = 0;
                while (qhead < qtail && !found)
@@ -1531,7 +1564,7 @@ main (int argc, const char *argv[])
                   int cy = queueY[qhead];
                   qhead++;
                   
-                  if (cx == maxx && cy == maxY)
+                  if (cx == maxx && cy == target_y)
                   {
                      found = 1;
                      break;
@@ -1614,7 +1647,7 @@ main (int argc, const char *argv[])
                   int path_len = 0;
                   
                   int cx = maxx;
-                  int cy = maxY;
+                  int cy = target_y;
                   
                   // Trace back to build path array
                   while (1)
@@ -1623,7 +1656,7 @@ main (int argc, const char *argv[])
                      path_y[path_len] = cy;
                      path_len++;
                      
-                     if (cx == entrance_x && cy == minY)
+                     if (cx == entrance_x && cy == entrance_y)
                         break;
                      
                      int px = parentX[cx][cy];
@@ -1707,9 +1740,9 @@ main (int argc, const char *argv[])
                qtail = 0;
                
                queueX[qtail] = entrance_x;
-               queueY[qtail] = minY;
+               queueY[qtail] = entrance_y;
                qtail++;
-               reachable[entrance_x][minY] = 1;
+               reachable[entrance_x][entrance_y] = 1;
                
                while (qhead < qtail)
                {
@@ -2095,11 +2128,11 @@ main (int argc, const char *argv[])
             
             // Machine-readable format
             fprintf (out, "// Machine-readable maze data:\n");
-            fprintf (out, "// MAZE_START %s %d %d %d %d %d %d %d %d\n", inside ? "INSIDE" : "OUTSIDE", W, maxY - minY + 1, maxx, helix, minY, maxY, entrance_x, _exit_x);
+            fprintf (out, "// MAZE_START %s %d %d %d %d %d %d %d %d %d\n", inside ? "INSIDE" : "OUTSIDE", W, maxY - minY + 1, maxx, helix, minY, maxY, entrance_x, _exit_x, (maxy_exit >= 0) ? maxy_exit : maxY);
             if (stl)
             {
                appendmazedata ("Machine-readable maze data:\n");
-               appendmazedata ("MAZE_START %s %d %d %d %d %d %d %d %d\n", inside ? "INSIDE" : "OUTSIDE", W, maxY - minY + 1, maxx, helix, minY, maxY, entrance_x, _exit_x);
+               appendmazedata ("MAZE_START %s %d %d %d %d %d %d %d %d %d\n", inside ? "INSIDE" : "OUTSIDE", W, maxY - minY + 1, maxx, helix, minY, maxY, entrance_x, _exit_x, (maxy_exit >= 0) ? maxy_exit : maxY);
             }
             for (Y = minY; Y <= maxY; Y++)
             {
@@ -2392,18 +2425,21 @@ main (int argc, const char *argv[])
                if (inside && mirrorinside)
                   fprintf (out, "mirror([1,0,0])");
                fprintf (out, "polyhedron(points=[");
+               // Negative helix: keeper orientation is still horizontal (angular, same as positive
+               // helix). Park connector is now at row abs_helix+2, mirroring positive helix layout.
                for (N = 0; N < W; N += W / nubs)
                   for (Y = 0; Y < 4; Y++)
                      for (X = 0; X < 4; X++)
                      {
                         int S = N * 4 + X + (parkvertical ? 0 : 2);
                         double z =
-                           y0 - dy * 1.5 / 4 + (helix + 1) * mazestep + Y * mazestep / 4 + dy * X / 4 +
-                           (parkvertical ? mazestep / 8 : dy / 2 - mazestep * 3 / 8);
+                           y0 - dy * 1.5 / 4 + (abs_helix + 1) * mazestep + Y * mazestep / 4 + dy * X / 4 +
+                           (parkvertical ? mazestep / 8 : dy / 2 - mazestep * 3 / 8) +
+                           (helix < 0 && !parkvertical ? mazestep : 0); // neg helix: gate is one row higher
                         double x = s[S].x[1];
                         double y = s[S].y[1];
                         if (parkvertical ? Y == 1 || Y == 2 : X == 1 || X == 2)
-                        {       // ridge height instead or surface
+                        {       // ridge height instead of surface
                            x = (s[S].x[1] * (mazethickness - parkthickness) + s[S].x[2] * parkthickness) / mazethickness;
                            y = (s[S].y[1] * (mazethickness - parkthickness) + s[S].y[2] * parkthickness) / mazethickness;
                         } else if (parkvertical)

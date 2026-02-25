@@ -64,7 +64,7 @@ def clean_comment_block(block_text: str) -> str:
             cleaned_lines.append(content.rstrip())
         else:
             cleaned_lines.append(raw.rstrip())
-    return '\n'.join(cleaned_lines).strip()
+    return '\n'.join(cleaned_lines).strip('\n')
 
 
 def extract_from_file(path: str, cwd: str) -> List[Tuple[int, str, str]]:
