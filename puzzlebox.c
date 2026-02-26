@@ -1126,21 +1126,22 @@ main (int argc, const char *argv[])
             } else              // Left to final
             {
                if (helix < 0)
-               {                // Negative helix: connect park slot rightward at row abs_helix+2
-                  //   (col 1 at row abs_helix+1 is FLAGI so we step up one row, same as
-                  //    positive helix uses FLAGR at abs_helix+1 and F=(1,abs_helix+1))
-                  maze[0][abs_helix + 2] |= FLAGR;
-                  maze[X = 1][Y = abs_helix + 2] |= FLAGL;
-                  if (!inside && !noa && W / nubs > 3 && H > abs_helix + 4)
-                  {                // An "A" at finish: 3x2 layout mirroring positive helix
-                     // Bottom row (h+2): park=(0,h+2) — F=col1, E=col2, D=col3
-                     maze[X][Y] |= FLAGL | FLAGR | FLAGU;     // F(1,h+2): left=park, right=E, up=B
-                     maze[X + 1][Y] |= FLAGL | FLAGU;         // E(2,h+2): left=F, up=A  (dead end)
-                     // Top row (h+3): A=col2, B=col1, C=col0
-                     maze[X + 1][Y + 1] |= FLAGD | FLAGL;     // A(2,h+3): down=E, left=B  (dead end)
-                     maze[X][Y + 1] |= FLAGR | FLAGD | FLAGL; // B(1,h+3): right=A, down=F, left=C
-                     maze[X - 1][Y + 1] |= FLAGR;             // C(0,h+3): right=B — DFS continues up
-                     X--;
+               {                // Negative helix: dy<0, so col seg-1 is physically lowest.
+                  //   col 0 row abs_helix+1 sits exactly at the FLAGI boundary (not caught by
+                  //   strict < check) — mark it FLAGI explicitly to remove that isolated cell.
+                  //   Park at col seg-1 row abs_helix+2 (lowest reachable). A extends left.
+                  int seg = W / nubs;
+                  maze[0][abs_helix + 1] |= FLAGI;               // eliminate isolated below-park cell
+                  maze[seg - 1][abs_helix + 2] |= FLAGL;         // park: connects left into F
+                  maze[X = seg - 2][Y = abs_helix + 2] |= FLAGR; // F(seg-2): right=park
+                  if (!inside && !noa && seg > 3 && H > abs_helix + 4)
+                  {                // An "A" at finish: horizontally mirrored vs. positive helix
+                     maze[X][Y] |= FLAGR | FLAGL | FLAGU;     // F(seg-2): right=park, left=E, up=B
+                     maze[X - 1][Y] |= FLAGR | FLAGU;         // E(seg-3): right=F, up=A  (dead end)
+                     maze[X - 1][Y + 1] |= FLAGR | FLAGD;     // A(seg-3): right=B, down=E  (dead end)
+                     maze[X][Y + 1] |= FLAGR | FLAGL | FLAGD; // B(seg-2): right=C, left=A, down=F
+                     maze[X + 1][Y + 1] |= FLAGL;             // C(seg-1): left=B — DFS continues up
+                     X++;
                      Y++;
                   }
                } else
@@ -1531,9 +1532,10 @@ main (int argc, const char *argv[])
             memset(solution, 0, sizeof(solution));
             memset(reachable, 0, sizeof(reachable));
             
-            // The park connector is always at col 0, row = abs_helix+1 (positive/zero helix)
-            // or abs_helix+2 (negative helix).  This is minY for helix=0, minY+1 otherwise.
-            int entrance_x = 0;
+            // Park: col 0 row abs_helix+1 for positive/zero helix (col 0 is physically lowest).
+            // Park: col W/nubs-1 row abs_helix+2 for negative helix (col W/nubs-1 is lowest;
+            //   that col at row abs_helix+1 is FLAGI because dy*(W/nubs-1) pushes it below base).
+            int entrance_x = (helix < 0 ? W / nubs - 1 : 0);
             int entrance_y = abs_helix + (helix < 0 ? 2 : 1);
 	    int _exit_x = -1;
             
@@ -2421,21 +2423,24 @@ main (int argc, const char *argv[])
             fprintf (out, ");\n");
             if (parkthickness)
             {                   // Park ridge
-	      fprintf (out, "// PARK thickness\n"); // DEBUG
+               // For negative helix the park is at col W/nubs-1 (seg-1). The ridge bumps
+               // (at X=1,2) must straddle the col(seg-2)/col(seg-1) boundary — the click
+               // point between the first move and the park cell — mirroring how positive
+               // helix straddles the col0/col1 boundary. Shift by (W/nubs-2)*4 so X=0
+               // starts at col seg-2 and X=1,2 land on the boundary.
+               int park_S_shift = (helix < 0 && !parkvertical ? (W / nubs - 2) * 4 : 0);
                if (inside && mirrorinside)
                   fprintf (out, "mirror([1,0,0])");
                fprintf (out, "polyhedron(points=[");
-               // Negative helix: keeper orientation is still horizontal (angular, same as positive
-               // helix). Park connector is now at row abs_helix+2, mirroring positive helix layout.
                for (N = 0; N < W; N += W / nubs)
                   for (Y = 0; Y < 4; Y++)
                      for (X = 0; X < 4; X++)
                      {
-                        int S = N * 4 + X + (parkvertical ? 0 : 2);
+                        int S = (N * 4 + X + park_S_shift + (parkvertical ? 0 : 2) + W * 4) % (W * 4);
                         double z =
                            y0 - dy * 1.5 / 4 + (abs_helix + 1) * mazestep + Y * mazestep / 4 + dy * X / 4 +
                            (parkvertical ? mazestep / 8 : dy / 2 - mazestep * 3 / 8) +
-                           (helix < 0 && !parkvertical ? mazestep : 0); // neg helix: gate is one row higher
+                           (helix < 0 && !parkvertical ? mazestep + dy * (W / nubs - 2) : 0); // neg: +1 row, X=0 starts at col seg-2
                         double x = s[S].x[1];
                         double y = s[S].y[1];
                         if (parkvertical ? Y == 1 || Y == 2 : X == 1 || X == 2)
@@ -2452,8 +2457,12 @@ main (int argc, const char *argv[])
                {
                   int P = N * 32;
                   inline void add (int a, int b, int c, int d)
-                  {
-                     fprintf (out, "[%d,%d,%d],[%d,%d,%d],", P + a, P + b, P + c, P + a, P + c, P + d);
+                  {  // For negative helix the park ridge has reversed z-slope (dy<0),
+                     // which inverts face normals vs positive helix. Flip winding to correct.
+                     if (helix < 0 && !parkvertical)
+                        fprintf (out, "[%d,%d,%d],[%d,%d,%d],", P + a, P + c, P + b, P + a, P + d, P + c);
+                     else
+                        fprintf (out, "[%d,%d,%d],[%d,%d,%d],", P + a, P + b, P + c, P + a, P + c, P + d);
                   }
                   for (X = 0; X < 6; X += 2)
                   {
