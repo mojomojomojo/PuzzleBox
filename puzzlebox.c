@@ -83,6 +83,7 @@ main (int argc, const char *argv[])
    int part = 0;
    int inside = 0;
    int flip = 0;
+   int flip_stagger = 0;
    int outersides = 7;
    int testmaze = 0;
    int helix = 2;
@@ -140,6 +141,7 @@ main (int argc, const char *argv[])
       {"part", 'n', POPT_ARG_INT, &part, 0, "Which part to make", "N (0 for all)"},
       {"inside", 'i', POPT_ARG_NONE, &inside, 0, "Maze on inside (hard)"},
       {"flip", 'f', POPT_ARG_NONE, &flip, 0, "Alternating inside/outside maze"},
+      {"flip-stagger", '\0', POPT_ARG_NONE, &flip_stagger, 0, "Mazes on even parts, nubs on odd parts (opposite of --flip)"},
       {"nubs", 'N', POPT_ARG_INT | POPT_ARGFLAG_SHOW_DEFAULT, &nubs, 0, "Nubs", "N"},
       {"helix", 'H', POPT_ARG_INT | POPT_ARGFLAG_SHOW_DEFAULT, &helix, 0, "Helix", "N (0 for non helical, negative for reverse/clockwise)"},
       {"base-height", 'b', POPT_ARG_DOUBLE | POPT_ARGFLAG_SHOW_DEFAULT, &baseheight, 0, "Base height", "mm"},
@@ -475,6 +477,18 @@ main (int argc, const char *argv[])
          {
             mazeoutside = 1 - mazeoutside;
             nextinside = 1 - nextinside;
+         }
+      }
+      if (flip_stagger)
+      {
+         if (p & 1)
+         {
+            mazeoutside = 1 - mazeoutside;
+            nextinside = 1 - nextinside;
+         } else
+         {
+            mazeinside = 1 - mazeinside;
+            nextoutside = 1 - nextoutside;
          }
       }
       if (p == 1)
@@ -964,6 +978,18 @@ main (int argc, const char *argv[])
             nextinside = 1 - nextinside;
          }
       }
+      if (flip_stagger)
+      {
+         if (part & 1)
+         {
+            mazeoutside = 1 - mazeoutside;
+            nextinside = 1 - nextinside;
+         } else
+         {
+            mazeinside = 1 - mazeinside;
+            nextoutside = 1 - nextoutside;
+         }
+      }
       if (part == 1)
          mazeinside = 0;
       if (part == parts)
@@ -1178,7 +1204,7 @@ main (int argc, const char *argv[])
                         }
                         maze[x][y] |= FLAGL;
                      }
-               if (!flip || inside)
+               if ((!flip || inside) && (!flip_stagger || !inside))
                   while (maxx + 1 < W && !(test (maxx + 1, H - 2) & FLAGI))
                      maxx++;
             } else
@@ -1265,7 +1291,8 @@ main (int argc, const char *argv[])
                      errx (1, "WTF");   // We should have picked a way we can go
                   // Entry
                   if (p->n > max && (test (X, Y + 1) & FLAGI)   //
-                      && (!flip || inside || !(X % (W / nubs))))
+                      && (!flip || inside || !(X % (W / nubs)))        //
+                      && (!flip_stagger || !inside || !(X % (W / nubs))))
                   {             // Longest path that reaches top
                      max = p->n;
                      maxx = X;
@@ -2645,7 +2672,7 @@ main (int argc, const char *argv[])
          textside (1);
       if (coresolid && part == 1)
          fprintf (out, "translate([0,0,%lld])cylinder(r=%lld,h=%lld,$fn=%d);\n", scaled (basethickness), scaled (part_r0 + clearance + (!mazeinside && part < parts ? clearance : 0)), scaled (height - basethickness), W * 4);      // Solid core
-      if ((mazeoutside && !flip && part == parts) || (!mazeoutside && part + 1 == parts))
+      if ((mazeoutside && !flip && !flip_stagger && part == parts) || (!mazeoutside && part + 1 == parts))
          part_entrya = 0;            // Align for lid alignment
       else if (fixnubs)
       {
