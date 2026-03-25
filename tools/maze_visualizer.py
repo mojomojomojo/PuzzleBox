@@ -401,6 +401,154 @@ def visualize_maze_text(maze_data, show_invalid=False):
     return '\n'.join(reversed(output))
 
 
+def generate_svg(maze_data, output_file, cell_size=40, margin=20):
+    """Generate SVG visualization of the maze with walls as lines."""
+    width = maze_data['width']
+    height = maze_data['height']
+    helix = maze_data.get('helix') or 0
+    exit_x = maze_data['exit_x']
+    maze = maze_data['maze']
+
+    CS = cell_size
+    start_pos = (0, 1)  # entry is always col 0, row 1
+    exit_pos = (exit_x, height - 1) if exit_x is not None else None
+
+    # Reserve space above the maze grid for the exit arrow
+    arrow_space = CS
+
+    def x_offset_for_column(col_index):
+        if helix == 0 or width == 0:
+            return 0.0
+        return (-helix * CS * col_index) / width
+
+    def cell_corners_raw(cx, cy):
+        """Return raw (unshifted) corners for cell (cx, cy): TL, TR, BL, BR."""
+        display_y = height - 1 - cy
+        x0 = cx * CS
+        x1 = (cx + 1) * CS
+        top = arrow_space + display_y * CS
+        y_tl = top + x_offset_for_column(cx)
+        y_tr = top + x_offset_for_column(cx + 1)
+        y_bl = top + CS + x_offset_for_column(cx)
+        y_br = top + CS + x_offset_for_column(cx + 1)
+        return (x0, y_tl), (x1, y_tr), (x0, y_bl), (x1, y_br)
+
+    # Compute bounds from transformed maze boundary lattice.
+    # For helix!=0 this includes the full skew introduced by column offsets.
+    min_raw_y = float('inf')
+    max_raw_y = float('-inf')
+    for display_row in range(height + 1):
+        base_y = arrow_space + display_row * CS
+        for col in range(width + 1):
+            yv = base_y + x_offset_for_column(col)
+            min_raw_y = min(min_raw_y, yv)
+            max_raw_y = max(max_raw_y, yv)
+
+    svg_width = width * CS + 2 * margin
+    svg_height = int(round((max_raw_y - min_raw_y) + 2 * margin))
+    y_shift = margin - min_raw_y
+
+    def shift_point(point):
+        return (point[0] + margin, point[1] + y_shift)
+
+    def normalize_segment(point_a, point_b):
+        ax, ay = point_a
+        bx, by = point_b
+        seg = (round(ax, 4), round(ay, 4), round(bx, 4), round(by, 4))
+        rev = (seg[2], seg[3], seg[0], seg[1])
+        return min(seg, rev)
+
+    # Collect unique wall segments as normalized (x1, y1, x2, y2) tuples
+    walls = set()
+    for maze_y in range(height):
+        for x in range(width):
+            cell = maze[x][maze_y]
+            is_exit = exit_pos is not None and (x, maze_y) == exit_pos
+
+            if (cell & FLAG_INVALID) and not is_exit:
+                continue  # skip invalid cells
+
+            top_left, top_right, bottom_left, bottom_right = cell_corners_raw(x, maze_y)
+            flags = (cell & ~FLAG_INVALID) if is_exit else cell
+
+            # Top wall: FLAG_UP absent means wall present at visual top of cell.
+            # For the exit cell the top is always open (arrow marks that opening).
+            if not (flags & FLAG_UP) and not is_exit:
+                walls.add(normalize_segment(shift_point(top_left), shift_point(top_right)))
+
+            # Bottom wall
+            if not (flags & FLAG_DOWN):
+                walls.add(normalize_segment(shift_point(bottom_left), shift_point(bottom_right)))
+
+            # Left wall
+            if not (flags & FLAG_LEFT):
+                walls.add(normalize_segment(shift_point(top_left), shift_point(bottom_left)))
+
+            # Right wall
+            if not (flags & FLAG_RIGHT):
+                walls.add(normalize_segment(shift_point(top_right), shift_point(bottom_right)))
+
+    # ---- Build SVG ----
+    out = []
+    out.append('<?xml version="1.0" encoding="UTF-8"?>')
+    out.append(
+        f'<svg xmlns="http://www.w3.org/2000/svg" '
+        f'width="{svg_width}" height="{svg_height}" '
+        f'viewBox="0 0 {svg_width} {svg_height}">'
+    )
+
+    # Arrowhead marker
+    out.append('<defs>')
+    out.append(
+        '  <marker id="arrowhead" markerWidth="10" markerHeight="8" '
+        'refX="10" refY="4" orient="auto" markerUnits="userSpaceOnUse">'
+    )
+    out.append('    <polygon points="0 0, 10 4, 0 8" fill="black"/>')
+    out.append('  </marker>')
+    out.append('</defs>')
+
+    # White background
+    out.append(f'<rect width="{svg_width}" height="{svg_height}" fill="white"/>')
+
+    # Draw walls
+    for x1, y1, x2, y2 in sorted(walls):
+        out.append(
+            f'<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" '
+            f'stroke="black" stroke-width="2" stroke-linecap="square"/>'
+        )
+
+    # "S" label at the centre of the start cell
+    stl, str_, sbl, sbr = cell_corners_raw(*start_pos)
+    sx = (stl[0] + str_[0] + sbl[0] + sbr[0]) / 4.0
+    sy = (stl[1] + str_[1] + sbl[1] + sbr[1]) / 4.0
+    sx, sy = shift_point((sx, sy))
+    font_size = max(10, CS * 2 // 3)
+    out.append(
+        f'<text x="{sx}" y="{sy}" '
+        f'text-anchor="middle" dominant-baseline="central" '
+        f'font-size="{font_size}" font-weight="bold" '
+        f'font-family="sans-serif">S</text>'
+    )
+
+    # Exit arrow: from the centre of the exit cell upward to the
+    # centre of the hypothetical cell above the maze boundary
+    if exit_pos is not None:
+        ex, ey_m = exit_pos
+        etl, etr, ebl, ebr = cell_corners_raw(ex, ey_m)
+        ax = (etl[0] + etr[0] + ebl[0] + ebr[0]) / 4.0
+        ay = (etl[1] + etr[1] + ebl[1] + ebr[1]) / 4.0
+        ax, ay = shift_point((ax, ay))
+        out.append(
+            f'<line x1="{ax}" y1="{ay}" x2="{ax}" y2="{ay - CS}" '
+            f'stroke="black" stroke-width="2" marker-end="url(#arrowhead)"/>'
+        )
+
+    out.append('</svg>')
+
+    with open(output_file, 'w', encoding='utf-8') as f:
+        f.write('\n'.join(out))
+
+
 def parse_ascii_maze(text):
     """Parse ASCII maze format back into maze data.
     
@@ -608,6 +756,8 @@ Examples:
                        help='Parse ASCII maze format and convert to maze data')
     parser.add_argument('--output', '-o', metavar='FILE',
                        help='Output file for converted maze (requires --from-ascii)')
+    parser.add_argument('--svg', metavar='FILE',
+                       help='Write an SVG visualization of the maze to FILE')
     
     args = parser.parse_args()
     
@@ -663,6 +813,10 @@ Examples:
                     print(visualize_maze_ascii(maze_data, args.show_invalid))
                 else:
                     print(visualize_maze_unicode(maze_data, args.show_invalid))
+
+            if args.svg:
+                generate_svg(maze_data, args.svg)
+                print(f"SVG written to {args.svg}")
     
     except FileNotFoundError:
         print(f"Error: File not found: {args.filename}", file=sys.stderr)
