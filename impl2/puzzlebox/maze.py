@@ -277,7 +277,18 @@ class Maze:
                 # Current point to end
                 pos_list.append((px, py, pn))
 
-        self.entry_x = maxx
+        # With nub symmetry all segment offsets have identical maze structure.
+        # Pick the segment offset that places the exit at the highest physical z.
+        # helix>0: dy>0, highest z at offset seg-1; helix<0: dy<0, highest z at offset 0.
+        seg = W // self.nubs
+        if self.helix > 0:
+            best_offset = seg - 1
+        elif self.helix < 0:
+            best_offset = 0
+        else:
+            best_offset = maxx % seg  # no helix, any offset is equally high
+        self.entry_x = (maxx // seg) * seg + best_offset
+
         self.exit_y = maxy_exit
         return max_depth
 

@@ -20,7 +20,7 @@ def main():
     result = out.getvalue()
 
     if cfg.outfile:
-        with open(cfg.outfile, "w") as f:
+        with open(cfg.outfile, "wt", encoding='utf-8') as f:
             f.write(result)
     else:
         sys.stdout.write(result)

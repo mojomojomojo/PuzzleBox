@@ -78,12 +78,15 @@ def load_maze(filename: str, expected_W: int = 0, expected_H: int = 0
         if expected_W > 0 and W != expected_W:
             raise RuntimeError(
                 f"Width mismatch: expected {expected_W}, got {W} from {filename}")
-        if expected_H > 0 and H != expected_H:
+        if expected_H > 0 and H > expected_H:
             raise RuntimeError(
-                f"Height mismatch: expected {expected_H}, got {H} from {filename}")
+                f"Height mismatch: file has {H} rows but only {expected_H} expected from {filename}")
+        # If expected_H > H, the extra rows are above the ceiling (FLAGI only);
+        # use expected_H so the loaded maze fits the current grid layout.
+        grid_H = expected_H if expected_H > H else H
 
         # Create maze and read data
-        maze = Maze(W, H, helix_val, max(1, abs(helix_val)))
+        maze = Maze(W, grid_H, helix_val, max(1, abs(helix_val)))
         for y in range(H):
             line = f.readline().strip()
             vals = line.split()
@@ -92,6 +95,13 @@ def load_maze(filename: str, expected_W: int = 0, expected_H: int = 0
                     f"Wrong number of values at row {y}: expected {W}, got {len(vals)} in {filename}")
             for x in range(W):
                 maze.grid[x][y] = int(vals[x], 16)
+
+        # Mark any padding rows (grid_H > H) as FLAGI — they are above the
+        # ceiling and should never be visited by the DFS or geometry builder.
+        from .maze import FLAGI as _FLAGI
+        for y in range(H, grid_H):
+            for x in range(W):
+                maze.grid[x][y] |= _FLAGI
 
         # Read END
         line = f.readline().strip()

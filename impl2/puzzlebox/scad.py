@@ -319,6 +319,13 @@ def _compute_maze_params(cfg: Config, r: float, inside: int, part: int, height: 
     h = height - base - cfg.mazemargin - cfg.topspace - (mazestep / 4 if cfg.parkvertical else 0) - mazestep / 8
     H_raw = int(h / mazestep)
     H = H_raw + 2 + abs_helix
+    # For negative helix every successive nub copy needs one more row to reach
+    # the ceiling (because dy<0 shifts z down for higher X).  Without the extra
+    # rows the last nub copy tops out (nubs-1)*mazestep/nubs mm below ceiling,
+    # creating a visible blank band at the top.  Positive helix is unaffected
+    # because its nub copies shift in the opposite direction.
+    if helix < 0:
+        H += nubs - 1
 
     y0 = base + mazestep / 2 - mazestep * (abs_helix + 1) + mazestep / 8
     dy = mazestep * helix / W if helix else 0
@@ -368,6 +375,7 @@ def _makemaze(out: StringIO, cfg: Config, rng: random.Random,
         pre_buf.write(f"// Loaded {'inside' if inside else 'outside'} maze from {loadfile} "
                       f"(exit_x={loaded_maxx}, helix={loaded_helix})\n")
     else:
+        maze.mark_boundaries(cfg, base, height, margin, inside, part)
         if cfg.testmaze:
             maze.generate_test_pattern(cfg, inside)
         else:
