@@ -1039,6 +1039,12 @@ main (int argc, const char *argv[])
                   helix > 0 ? "counter-clockwise" : helix < 0 ? "clockwise" : "none");
          double y0 = base + mazestep / 2 - mazestep * (abs_helix + 1) + mazestep / 8;
          H += 2 + abs_helix;    // Allow one above, one below and abs(helix) below
+         // For negative helix every successive nub copy needs one more row to
+         // reach the ceiling (dy<0 shifts z down for higher X).  Without the
+         // extra rows the last nub copy tops out (nubs-1)*mazestep/nubs mm
+         // below ceiling, creating a visible blank band at the top.
+         if (helix < 0)
+            H += nubs - 1;
          if (W < 3 || H < 1)
             errx (1, "Too small");
          double a = 0,
@@ -1339,6 +1345,13 @@ main (int argc, const char *argv[])
                }
                fprintf (out, "// Path length %d\n", max);
             }
+            // With nub symmetry all segment offsets have identical maze structure.
+            // Pick the segment offset that places the exit at the highest physical z:
+            // helix>0: dy>0, highest z at offset seg-1; helix<0: dy<0, highest z at offset 0.
+            if (helix > 0)
+               maxx = (maxx / (W / nubs)) * (W / nubs) + (W / nubs - 1);
+            else if (helix < 0)
+               maxx = (maxx / (W / nubs)) * (W / nubs);
             part_entrya = (double) 360 *maxx / W;
             part_mazeexit = part_entrya;  // Save maze exit angle for opposite nub positioning
             if (fixnubs && globalexit == 0)

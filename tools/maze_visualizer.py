@@ -102,10 +102,11 @@ def visualize_maze_ascii(maze_data, show_invalid=False):
             break
     
     # Start point is always at column 0, Y=1 (second row, first row is invalid)
-    start_positions = [(0, 1)]
+    start_positions = [maze_data.get('start_pos', (0, 1))]
     
     # Exit point is at column exit_x, Y=height-1 (top of cylinder, top of display)
-    exit_positions = [(exit_x, height - 1)] if exit_x is not None else []
+    exit_y = maze_data.get('exit_y', height - 1)
+    exit_positions = [(exit_x, exit_y)] if exit_x is not None else []
     
     # Create a grid: each cell is 4 chars wide (+---) and 2 chars tall (top border + content)
     # Plus 1 extra row at bottom for final border
@@ -230,10 +231,11 @@ def visualize_maze_unicode(maze_data, show_invalid=False):
             break
     
     # Start point is always at column 0, Y=1 (second row, first row is invalid)
-    start_positions = [(0, 1)]
+    start_positions = [maze_data.get('start_pos', (0, 1))]
     
     # Exit point is at column exit_x, Y=height-1 (top of cylinder, top of display)
-    exit_positions = [(exit_x, height - 1)] if exit_x is not None else []
+    exit_y = maze_data.get('exit_y', height - 1)
+    exit_positions = [(exit_x, exit_y)] if exit_x is not None else []
     
     # Create a grid that's 2*height+1 by 2*width+1 for drawing
     grid_h = height * 2 + 1
@@ -410,8 +412,8 @@ def generate_svg(maze_data, output_file, cell_size=40, margin=20):
     maze = maze_data['maze']
 
     CS = cell_size
-    start_pos = (0, 1)  # entry is always col 0, row 1
-    exit_pos = (exit_x, height - 1) if exit_x is not None else None
+    start_pos = maze_data.get('start_pos', (0, 1))
+    exit_pos = (exit_x, maze_data.get('exit_y', height - 1)) if exit_x is not None else None
 
     # Reserve space above the maze grid for the exit arrow
     arrow_space = CS
@@ -575,8 +577,14 @@ def parse_ascii_maze(text):
     # Parse structured fields from header lines (strip leading comment chars)
     helix = None
     header_exit_x = None
+    import re as _re
     for hline in headers:
-        # Strip comment prefixes (// or #) and whitespace
+        # Match "helix=N" or "helix: N" anywhere in the line
+        if helix is None:
+            m = _re.search(r'\bhelix[=:\s]+(-?\d+)', hline, _re.IGNORECASE)
+            if m:
+                helix = int(m.group(1))
+        # Strip comment prefixes (// or #) and whitespace for keyword-style headers
         stripped = hline.strip().lstrip('/').lstrip('#').strip()
         tokens = stripped.split()
         if not tokens:
@@ -590,6 +598,11 @@ def parse_ascii_maze(text):
         elif key in ('EXIT_X', 'ENTRY_X') and len(tokens) >= 2:
             try:
                 header_exit_x = int(tokens[1])
+            except ValueError:
+                pass
+        elif key == 'EXIT' and len(tokens) >= 3 and tokens[1].rstrip(':').upper() == 'X':
+            try:
+                header_exit_x = int(tokens[2])
             except ValueError:
                 pass
 
@@ -715,8 +728,7 @@ def save_maze_file(maze_data, filename):
         f.write("PUZZLEBOX_MAZE v1.1\n")
         f.write(f"WIDTH {maze_data['width']}\n")
         f.write(f"HEIGHT {maze_data['height']}\n")
-        if maze_data.get('helix') is not None:
-            f.write(f"HELIX {maze_data['helix']}\n")
+        f.write(f"HELIX {maze_data['helix'] if maze_data.get('helix') is not None else 0}\n")
         if maze_data.get('exit_x') is not None:
             f.write(f"EXIT_X {maze_data['exit_x']}\n")
         f.write("DATA\n")
@@ -730,6 +742,35 @@ def save_maze_file(maze_data, filename):
         f.write("END\n")
 
 
+def mirror_maze_data(maze_data, reverse_horizontal=False, reverse_vertical=False):
+    """Return maze data mirrored along the requested axes."""
+    width, height = maze_data['width'], maze_data['height']
+    result = dict(maze_data)
+    result['maze'] = [[0 for _ in range(height)] for _ in range(width)]
+    for x in range(width):
+        for y in range(height):
+            cell = maze_data['maze'][x][y]
+            if reverse_horizontal:
+                left, right = bool(cell & FLAG_LEFT), bool(cell & FLAG_RIGHT)
+                cell &= ~(FLAG_LEFT | FLAG_RIGHT)
+                if left: cell |= FLAG_RIGHT
+                if right: cell |= FLAG_LEFT
+            if reverse_vertical:
+                up, down = bool(cell & FLAG_UP), bool(cell & FLAG_DOWN)
+                cell &= ~(FLAG_UP | FLAG_DOWN)
+                if up: cell |= FLAG_DOWN
+                if down: cell |= FLAG_UP
+            dx = width - 1 - x if reverse_horizontal else x
+            dy = height - 1 - y if reverse_vertical else y
+            result['maze'][dx][dy] = cell
+    sx, sy = maze_data.get('start_pos', (0, 1))
+    result['start_pos'] = (width - 1 - sx if reverse_horizontal else sx,
+                           height - 1 - sy if reverse_vertical else sy)
+    if maze_data.get('exit_x') is not None:
+        result['exit_x'] = width - 1 - maze_data['exit_x'] if reverse_horizontal else maze_data['exit_x']
+        ey = maze_data.get('exit_y', height - 1)
+        result['exit_y'] = height - 1 - ey if reverse_vertical else ey
+    return result
 def main():
     parser = argparse.ArgumentParser(
         description='Visualize and convert PuzzleBox maze files',
@@ -750,6 +791,10 @@ Examples:
                        help='Use text format showing passage directions (L/R/U/D)')
     parser.add_argument('--show-invalid', action='store_true',
                        help='Show invalid cells (normally hidden)')
+    parser.add_argument('--reverse-horizontal', action='store_true',
+                       help='Mirror the maze horizontally')
+    parser.add_argument('--reverse-vertical', action='store_true',
+                       help='Mirror the maze vertically')
     parser.add_argument('--info', action='store_true',
                        help='Show maze information only (no visualization)')
     parser.add_argument('--from-ascii', action='store_true',
@@ -777,8 +822,7 @@ Examples:
                 print("PUZZLEBOX_MAZE v1.1")
                 print(f"WIDTH {maze_data['width']}")
                 print(f"HEIGHT {maze_data['height']}")
-                if maze_data.get('helix') is not None:
-                    print(f"HELIX {maze_data['helix']}")
+                print(f"HELIX {maze_data['helix'] if maze_data.get('helix') is not None else 0}")
                 if maze_data.get('exit_x') is not None:
                     print(f"EXIT_X {maze_data['exit_x']}")
                 print("DATA")
@@ -794,6 +838,7 @@ Examples:
                 return 1
             
             maze_data = parse_maze_file(args.filename)
+            maze_data = mirror_maze_data(maze_data, args.reverse_horizontal, args.reverse_vertical)
             
             # Print info
             print(f"Maze: {args.filename}")

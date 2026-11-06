@@ -410,12 +410,34 @@ def score_maze( maze: Maze ) -> float:
     score += len(maze.solution) * .05
     return score
 
-def parse_machine_readable(lines: List[str]) -> Maze:
+MR_MARKER = 'machine-readable maze data:'
+_side_re = re.compile(r"MAZE_START\s+(INSIDE|OUTSIDE)\b", re.I)
+
+
+def find_maze_blocks(lines: List[str]) -> Dict[str, int]:
+    """Return {'INSIDE'|'OUTSIDE': line index of its machine-readable marker}.
+
+    A part may carry an inside maze, an outside maze, both, or neither.
+    """
+    blocks: Dict[str, int] = {}
+    for i, l in enumerate(lines):
+        if MR_MARKER not in l.lower():
+            continue
+        for j in range(i + 1, min(i + 4, len(lines))):
+            m = _side_re.search(lines[j])
+            if m:
+                blocks.setdefault(m.group(1).upper(), i)
+                break
+    return blocks
+
+
+def parse_machine_readable(lines: List[str], mr_idx: Optional[int] = None) -> Maze:
     start_re = re.compile(r"MAZE_START\s+(INSIDE|OUTSIDE)\s+(\d+)\s+(\d+)\s+(\d+)\s+(-?\d+)\s+(-?\d+)\s+(-?\d+)(?:\s+(-?\d+)\s+(-?\d+)(?:\s+(-?\d+))?)?", re.I)
     row_re = re.compile(r"MAZE_ROW\s+(-?\d+)\s+(.+)", re.I)
 
-    # locate machine-readable block start
-    mr_idx = next((i for i, l in enumerate(lines) if 'machine-readable maze data:' in l.lower()), None)
+    # locate machine-readable block start (first one, unless told which)
+    if mr_idx is None:
+        mr_idx = next((i for i, l in enumerate(lines) if MR_MARKER in l.lower()), None)
     if mr_idx is None:
         raise RuntimeError("No machine-readable maze data found")
 
@@ -466,15 +488,6 @@ def parse_machine_readable(lines: List[str]) -> Maze:
 
         if line.upper().startswith("// MAZE_END") or line.upper().startswith("MAZE_END"):
             break
-
-    # Extract human-readable data if available
-    hr = None
-    try:
-        mr_idx = next((i for i, l in enumerate(lines) if 'machine-readable maze data:' in l.lower()), None)
-    except StopIteration:
-        mr_idx = None
-    if mr_idx is not None:
-        hr = extract_human_readable(lines, mr_idx)
 
     # Find entry/exit points after maze grid is loaded
     if maze:
@@ -613,6 +626,9 @@ def extract_human_readable(lines: List[str], mr_idx: int) -> Dict[str, Optional[
     
     while i >= 0:
         s = lines[i].rstrip('\n')
+        if 'MAZE_END' in s.upper():
+            # Reached the previous maze's data block; don't mix the two mazes.
+            break
         if s.strip().startswith('//'):
             s = s.strip()[2:]  # Strip //
             if s.startswith(' '):
@@ -700,29 +716,9 @@ def main():
         print(json.dumps(metrics_json, indent=2))
 
 
-def score_file(mpath, weights):
-    """Score a maze file using custom scoring logic.
-    
-    Args:
-        mpath: Path to the maze file
-        weights: Weight string for scoring
-        
-    Returns:
-        Tuple of (score, maze, metrics)
-    """
-    with open(mpath, 'r', encoding='utf-8', errors='ignore') as fh:
-        lines = fh.readlines()
-
-    maze = parse_machine_readable(lines)
-    
-    # extract human-readable blocks near the machine-readable data
-    try:
-        mr_idx = next((i for i, l in enumerate(lines) if 'machine-readable maze data:' in l.lower()), None)
-    except StopIteration:
-        mr_idx = None
-    hr = None
-    if mr_idx is not None:
-        hr = extract_human_readable(lines, mr_idx)
+def _score_block(lines, mr_idx, weights):
+    maze = parse_machine_readable(lines, mr_idx)
+    hr = extract_human_readable(lines, mr_idx)
 
     metrics = analyze_maze(maze)
     default_weights = {"connected": 2.0, "unreachable": -5.0, "dead_end": -1.0, "branching": 1.0, "avg_degree": 1.0}
@@ -739,9 +735,58 @@ def score_file(mpath, weights):
     if hr:
         metrics['human_readable'] = hr
 
+    metrics['orientation'] = maze.orientation
     score = evaluate_all_turns(maze.solution)
+    metrics['difficulty'] = score
 
     return (score, maze, metrics)
+
+
+def score_file_sides(mpath, weights, sides=None):
+    """Score every maze in a file (or just the requested sides).
+
+    Args:
+        mpath: Path to the .scad file
+        weights: Weight string for scoring
+        sides: iterable of 'inside'/'outside' (case-insensitive); None = all present
+
+    Returns:
+        {'INSIDE'|'OUTSIDE': (score, maze, metrics)} for each requested side found.
+        Raises RuntimeError if a requested side has no maze in the file.
+    """
+    with open(mpath, 'r', encoding='utf-8', errors='ignore') as fh:
+        lines = fh.readlines()
+
+    blocks = find_maze_blocks(lines)
+    wanted = [s.upper() for s in sides] if sides else list(blocks)
+    missing = [s for s in wanted if s not in blocks]
+    if missing or not wanted:
+        found = ', '.join(blocks) or 'none'
+        raise RuntimeError(f"No {'/'.join(missing) or ''} maze data found (mazes present: {found})")
+
+    return {side: _score_block(lines, blocks[side], weights) for side in wanted}
+
+
+def score_file(mpath, weights, side=None):
+    """Score a maze file using custom scoring logic.
+
+    Args:
+        mpath: Path to the maze file
+        weights: Weight string for scoring
+        side: 'inside' or 'outside' to pick a maze; None = first maze in the file
+
+    Returns:
+        Tuple of (score, maze, metrics)
+    """
+    if side is not None:
+        return score_file_sides(mpath, weights, [side])[side.upper()]
+
+    with open(mpath, 'r', encoding='utf-8', errors='ignore') as fh:
+        lines = fh.readlines()
+    mr_idx = next((i for i, l in enumerate(lines) if MR_MARKER in l.lower()), None)
+    if mr_idx is None:
+        raise RuntimeError("No machine-readable maze data found")
+    return _score_block(lines, mr_idx, weights)
 
 
 if __name__ == '__main__':
