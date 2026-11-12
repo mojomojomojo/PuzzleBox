@@ -30,9 +30,11 @@ def generate(cfg: Config, out: StringIO):
         return
 
     cfg.basethickness += cfg.logodepth
+    cfg.logo_adjust = cfg.logodepth
 
     _write_header(out, cfg)
     _write_modules(out, cfg)
+    _write_dimensions(out, cfg)
 
     out.write(f"scale(0.001){{\n")
 
@@ -120,6 +122,12 @@ def _write_param_comments(out: StringIO, cfg: Config):
         if val:
             out.write(f"// {name}: {val}\n")
 
+    # Thick walls / end cap (Python-only)
+    for sp, sw, sb in cfg.stages:
+        out.write(f"// Thick from part {sp}:"
+                  f" wall {sw if sw is not None else '(inherited)'},"
+                  f" base {sb if sb is not None else '(inherited)'}\n")
+
     # String values
     for name, val in [
         ("Text end", cfg.textend), ("Text sides", cfg.textsides),
@@ -147,6 +155,42 @@ def _write_modules(out: StringIO, cfg: Config):
     )
 
 
+DIMENSION_KEYS = ("inner_radius", "outer_radius", "base_radius", "inside_height")
+
+
+def _fmt_mm(v: float) -> str:
+    return f"{v:.3f}"
+
+
+def _write_dimensions(out: StringIO, cfg: Config):
+    """Write part dimensions as OpenSCAD variables (mm, unscaled) + machine-readable comments.
+
+    Single part: scalars part_number, part_inner_radius, part_outer_radius,
+    part_base_radius, part_inside_height.
+    Always: lists part_inner_radii, part_outer_radii, part_base_radii,
+    part_inside_heights, indexed by part number (index 0 is undef).
+    Note the geometry itself is inside scale(0.001), i.e. in microns.
+    """
+    parts = [cfg.part] if cfg.part else list(range(1, cfg.parts + 1))
+    dims = {p: cfg.part_dimensions(p) for p in parts}
+
+    out.write("// Part dimensions (mm; geometry below is inside scale(0.001))\n")
+    for p in parts:
+        fields = " ".join(f"{k}={_fmt_mm(dims[p][k])}" for k in DIMENSION_KEYS)
+        out.write(f"// PART_DIMENSIONS part={p} {fields}\n")
+
+    if cfg.part:
+        d = dims[cfg.part]
+        out.write(f"part_number = {cfg.part};\n")
+        for k in DIMENSION_KEYS:
+            out.write(f"part_{k} = {_fmt_mm(d[k])};\n")
+
+    for k, plural in zip(DIMENSION_KEYS, ("inner_radii", "outer_radii", "base_radii", "inside_heights")):
+        vals = ["undef"] + [_fmt_mm(dims[p][k]) if p in dims else "undef"
+                            for p in range(1, cfg.parts + 1)]
+        out.write(f"part_{plural} = [{','.join(vals)}];\n")
+
+
 def _box(out: StringIO, cfg: Config, part: int, layout_x: float = 0.0, layout_y: float = 0.0):
     """Generate one part of the puzzle box."""
     rng = create_rng(cfg)  # Per-part RNG (C uses /dev/urandom per read)
@@ -159,13 +203,8 @@ def _box(out: StringIO, cfg: Config, part: int, layout_x: float = 0.0, layout_y:
     W = int(part_r1 * 2 * math.pi / cfg.mazestep) // cfg.nubs * cfg.nubs
     W4 = W * 4
 
-    height = ((cfg.coregap + cfg.baseheight if cfg.coresolid else 0) +
-              cfg.coreheight + cfg.basethickness +
-              (cfg.basethickness + cfg.basegap) * (part - 1))
-    if part == 1:
-        height -= cfg.coreheight if cfg.coresolid else cfg.coregap
-    if part > 1:
-        height -= cfg.baseheight
+    height = cfg.part_height(part)
+    basethickness = cfg.base_t(part)
 
     out.write(f"// Part {part} ({part_r0:.2f}mm to {part_r1:.2f}mm and {part_r2:.2f}mm/{part_r3:.2f}mm base)\n")
 
@@ -201,9 +240,9 @@ def _box(out: StringIO, cfg: Config, part: int, layout_x: float = 0.0, layout_y:
     if not mazeinside and not mazeoutside and part < cfg.parts:
         # Non-maze thin wall
         out.write("difference(){\n")
-        out.write(f"translate([0,0,{scaled(cfg.basethickness / 2 - cfg.clearance)}])"
-                  f"cylinder(r={scaled(part_r1)},h={scaled(height - cfg.basethickness / 2 + cfg.clearance)},$fn={W4});"
-                  f"translate([0,0,{scaled(cfg.basethickness)}])"
+        out.write(f"translate([0,0,{scaled(basethickness / 2 - cfg.clearance)}])"
+                  f"cylinder(r={scaled(part_r1)},h={scaled(height - basethickness / 2 + cfg.clearance)},$fn={W4});"
+                  f"translate([0,0,{scaled(basethickness)}])"
                   f"cylinder(r={scaled(part_r0)},h={scaled(height)},$fn={W4});\n")
         out.write("}\n")
 
@@ -223,7 +262,7 @@ def _box(out: StringIO, cfg: Config, part: int, layout_x: float = 0.0, layout_y:
     hole_r = (part_r0 +
               (cfg.mazethickness + cfg.clearance if part > 1 and mazeinside else 0) +
               (cfg.clearance if not mazeinside and part < cfg.parts else 0))
-    out.write(f"translate([0,0,{scaled(cfg.basethickness)}])"
+    out.write(f"translate([0,0,{scaled(basethickness)}])"
               f"cylinder(r={scaled(hole_r)},h={scaled(height)},$fn={W4});\n")
     out.write("}\n")  # close BASE difference
     out.write("}\n")  # close union
@@ -278,8 +317,8 @@ def _box(out: StringIO, cfg: Config, part: int, layout_x: float = 0.0, layout_y:
     if cfg.coresolid and part == 1:
         core_r = (part_r0 + cfg.clearance +
                   (cfg.clearance if not mazeinside and part < cfg.parts else 0))
-        out.write(f"translate([0,0,{scaled(cfg.basethickness)}])"
-                  f"cylinder(r={scaled(core_r)},h={scaled(height - cfg.basethickness)},$fn={W4});\n")
+        out.write(f"translate([0,0,{scaled(basethickness)}])"
+                  f"cylinder(r={scaled(core_r)},h={scaled(height - basethickness)},$fn={W4});\n")
 
     # Nub entry angle
     if ((mazeoutside and not cfg.flip and not cfg.flip_stagger and part == cfg.parts)
@@ -309,7 +348,7 @@ def _compute_maze_params(cfg: Config, r: float, inside: int, part: int, height: 
     mazestep = cfg.mazestep
 
     W = int((r + (cfg.mazethickness if inside else -cfg.mazethickness)) * 2 * math.pi / mazestep) // nubs * nubs
-    base = cfg.basethickness if inside else cfg.baseheight
+    base = cfg.base_t(part) if inside else cfg.baseheight
     if (inside and part > 1) or (not inside and part < cfg.parts):
         base += cfg.nubdistance
     base += cfg.coreheight if cfg.coresolid else 0

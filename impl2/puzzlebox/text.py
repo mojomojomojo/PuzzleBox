@@ -112,16 +112,17 @@ def write_text_sides(out: StringIO, cfg: Config, part: int,
 def write_logo(out: StringIO, cfg: Config, part: int,
                part_r0: float):
     """Write logo or inside text at the base of a part."""
+    basethickness = cfg.base_t(part)
     if cfg.ajklogo and part == cfg.parts:
-        out.write(f"translate([0,0,{scaled(cfg.basethickness - cfg.logodepth)}])"
+        out.write(f"translate([0,0,{scaled(basethickness - cfg.logodepth)}])"
                   f"logo({scaled(part_r0 * 1.8)});\n")
     elif cfg.aalogo and part == cfg.parts:
-        out.write(f"translate([0,0,{scaled(cfg.basethickness - cfg.logodepth)}])"
+        out.write(f"translate([0,0,{scaled(basethickness - cfg.logodepth)}])"
                   f"linear_extrude(height={scaled(cfg.logodepth * 2)},convexity=10)"
                   f"logo({scaled(part_r0 * 1.8)},white=true);\n")
     elif cfg.textinside:
         out.write(
-            f"translate([0,0,{scaled(cfg.basethickness - cfg.logodepth)}])"
+            f"translate([0,0,{scaled(basethickness - cfg.logodepth)}])"
             f"linear_extrude(height={scaled(cfg.logodepth * 2)},convexity=10)"
             f"text(\"{cfg.textinside}\",font=\"{cfg.textfontend}\","
             f"size={scaled(part_r0)},halign=\"center\",valign=\"center\");\n"
@@ -136,15 +137,16 @@ def write_mark(out: StringIO, cfg: Config, part: int,
     markpos0 = cfg.outersides and (cfg.outersides // cfg.nubs * cfg.nubs != cfg.outersides)
     if not markpos0 or part + 1 < cfg.parts:
         return
-    r = part_r0 + cfg.wallthickness / 2
-    t = cfg.wallthickness * 2
+    wall = cfg.wall_t(part)
+    r = part_r0 + wall / 2
+    t = wall * 2
     if mazeinside:
-        r = part_r0 + cfg.mazethickness + cfg.wallthickness / 2
+        r = part_r0 + cfg.mazethickness + wall / 2
     elif mazeoutside:
-        r = part_r1 - cfg.mazethickness - cfg.wallthickness / 2
+        r = part_r1 - cfg.mazethickness - wall / 2
     if not mazeoutside:
-        r -= cfg.wallthickness / 2
-        t = cfg.wallthickness * 3 / 2
+        r -= wall / 2
+        t = wall * 3 / 2
     a = 0.0
     if part == cfg.parts and mazeinside:
         a = (-1 if cfg.mirrorinside else 1) * part_entrya  # Flipped sign from C since mirror

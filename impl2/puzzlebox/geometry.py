@@ -65,6 +65,7 @@ class MazePolyhedronBuilder:
         r = self.r
         inside = self.inside
         cfg = self.cfg
+        wall = cfg.wall_t(self.part)
 
         for S in range(W * 4):
             a = math.pi * 2 * (S - 1.5) / W / 4
@@ -74,11 +75,11 @@ class MazePolyhedronBuilder:
             ca = math.cos(a)
 
             if inside:
-                back_r = r + cfg.mazethickness + (cfg.wallthickness if self.part < cfg.parts else cfg.clearance + 0.01)
+                back_r = r + cfg.mazethickness + (wall if self.part < cfg.parts else cfg.clearance + 0.01)
                 recess_r = r + cfg.mazethickness
                 front_r = r
             else:
-                back_r = r - cfg.mazethickness - cfg.wallthickness
+                back_r = r - cfg.mazethickness - wall
                 recess_r = r - cfg.mazethickness
                 front_r = r
 
@@ -191,16 +192,14 @@ class MazePolyhedronBuilder:
         out.write("points=[")
 
         self.bottom = self.P
+        bottom_z = cfg.base_t(self.part) - cfg.clearance
         # Base points: 3 rings
         for S in range(W4):
-            self._addpoint(S, self.slices[S].x[0], self.slices[S].y[0],
-                           cfg.basethickness - cfg.clearance)
+            self._addpoint(S, self.slices[S].x[0], self.slices[S].y[0], bottom_z)
         for S in range(W4):
-            self._addpointr(S, self.slices[S].x[1], self.slices[S].y[1],
-                            cfg.basethickness - cfg.clearance)
+            self._addpointr(S, self.slices[S].x[1], self.slices[S].y[1], bottom_z)
         for S in range(W4):
-            self._addpoint(S, self.slices[S].x[2], self.slices[S].y[2],
-                           cfg.basethickness - cfg.clearance)
+            self._addpoint(S, self.slices[S].x[2], self.slices[S].y[2], bottom_z)
 
         # Maze cell points (16 per cell)
         dy_per_S = cfg.mazestep * maze.helix / W / 4

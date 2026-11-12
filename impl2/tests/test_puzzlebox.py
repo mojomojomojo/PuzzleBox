@@ -18,9 +18,13 @@ def _fixture(name):
 
 
 def _clean_lines(text):
-    """Return non-comment, non-empty lines (stripped) for structural comparison."""
+    """Return non-comment, non-empty lines (stripped) for structural comparison.
+
+    Skips the Python-only part-dimension variables (part_* = ...;).
+    """
     return [l.rstrip() for l in text.splitlines()
-            if l.strip() and not l.strip().startswith("//")]
+            if l.strip() and not l.strip().startswith("//")
+            and not l.startswith("part_")]
 
 
 def _run_python(argv):

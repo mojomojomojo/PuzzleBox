@@ -8,6 +8,20 @@ from typing import List, Optional
 from .config import Config
 
 
+def _thick_stage(text: str):
+    """Parse PART:WALL[:BASE] (WALL/BASE may be empty) for --thick."""
+    fields = text.split(":")
+    if len(fields) not in (2, 3):
+        raise argparse.ArgumentTypeError(f"expected PART:WALL[:BASE], got {text!r}")
+    try:
+        part = int(fields[0])
+        wall = float(fields[1]) if fields[1] else None
+        base = float(fields[2]) if len(fields) == 3 and fields[2] else None
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"expected PART:WALL[:BASE], got {text!r}")
+    return (part, wall, base)
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Build argparse parser matching all C optionsTable entries."""
     p = argparse.ArgumentParser(
@@ -141,6 +155,20 @@ def build_parser() -> argparse.ArgumentParser:
     # Python-only
     p.add_argument("--seed", type=int, default=None,
                    help="Random seed for deterministic maze generation (Python-only)")
+    p.add_argument("--thick-part", type=int, default=0,
+                   help="First part to get --thick-wall/--thick-base; later parts follow "
+                        "(default: 0 = last part) (Python-only)")
+    p.add_argument("--thick-wall", type=float, default=None,
+                   help="Wall thickness (mm) for parts >= --thick-part "
+                        "(default: same as --part-thickness) (Python-only)")
+    p.add_argument("--thick-base", type=float, default=None,
+                   help="End-cap thickness (mm) for parts >= --thick-part "
+                        "(default: same as --base-thickness) (Python-only)")
+    p.add_argument("--thick", type=_thick_stage, action="append", default=[],
+                   metavar="PART:WALL[:BASE]",
+                   help="Wall/end-cap thickness (mm) from PART onward, until a later --thick "
+                        "overrides it. Repeatable. Leave WALL or BASE empty to keep the "
+                        "previous value, e.g. --thick 6:4.5:3 --thick 12:6 --thick 14::4 (Python-only)")
 
     return p
 
@@ -209,6 +237,10 @@ def parse_args(argv: Optional[List[str]] = None) -> Config:
         savemazeinside=args.save_maze_inside,
         savemazeoutside=args.save_maze_outside,
         seed=args.seed,
+        thickpart=args.thick_part,
+        thickwall=args.thick_wall,
+        thickbase=args.thick_base,
+        thickstages=args.thick,
     )
 
     if args.mime is not None:

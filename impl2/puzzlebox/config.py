@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 import os
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 
 @dataclass
@@ -82,6 +82,21 @@ class Config:
     # Python-only: deterministic seed
     seed: Optional[int] = None
 
+    # Python-only: thicker walls / end cap from a target part onward.
+    # thickpart: first part to thicken (0 = last part). thickwall / thickbase:
+    # wall and end-cap thickness (mm) for parts >= thickpart (None = unchanged).
+    thickpart: int = 0
+    thickwall: Optional[float] = None
+    thickbase: Optional[float] = None
+    # Multiple stages: (part, wall|None, base|None). Each applies from that part
+    # onward until a later stage overrides it; None inherits the earlier value.
+    thickstages: List[Tuple[int, Optional[float], Optional[float]]] = field(default_factory=list)
+
+    # Set by generate() when basethickness is bumped by logodepth.
+    logo_adjust: float = field(init=False, default=0.0)
+    # Merged, sorted stages (populated by validate()).
+    stages: List[Tuple[int, Optional[float], Optional[float]]] = field(init=False, default_factory=list)
+
     # Computed values (populated by validate())
     abs_helix: int = field(init=False, default=0)
     globalexit: float = field(init=False, default=0.0)
@@ -149,6 +164,24 @@ class Config:
         if self.coresolid and self.coregap < self.mazestep * 2:
             self.coregap = self.mazestep * 2
 
+        if self.thickpart < 0 or self.thickpart > self.parts:
+            return f"--thick-part must be between 1 and {self.parts} (0 = last part)"
+        stages = list(self.thickstages)
+        if self.thickwall is not None or self.thickbase is not None:
+            stages.append((self.thickpart or self.parts, self.thickwall, self.thickbase))
+        seen = set()
+        for sp, sw, sb in stages:
+            if sp < 1 or sp > self.parts:
+                return f"--thick part must be between 1 and {self.parts} (got {sp})"
+            if sp in seen:
+                return f"--thick part {sp} given more than once"
+            seen.add(sp)
+            if sw is None and sb is None:
+                return f"--thick {sp}: give a wall and/or base thickness"
+            if (sw is not None and sw <= 0) or (sb is not None and sb <= 0):
+                return f"--thick {sp}: thicknesses must be positive"
+        self.stages = sorted(stages)
+
         # Pre-calculate part radii
         self._calc_part_radii()
 
@@ -198,20 +231,26 @@ class Config:
             if p == self.parts:
                 nextinside = 0
 
+            wall = self.wall_t(p)
             r1 = (
                 self.corediameter / 2
                 + self.wallthickness
                 + (p - 1) * (self.wallthickness + self.mazethickness + self.clearance)
             )
+            # Extra wall thickness on parts 1..p pushes this part outward.
+            # (Added separately so default output stays bit-identical.)
+            extra = sum(self.wall_t(q) - self.wallthickness for q in range(1, p + 1))
+            if extra:
+                r1 += extra
             if self.coresolid:
                 r1 -= (
-                    self.wallthickness
+                    self.wall_t(1)
                     + self.mazethickness
                     + self.clearance
                     - (self.mazethickness if self.inside else 0)
                 )
 
-            r0 = r1 - self.wallthickness
+            r0 = r1 - wall
             if mazeinside and p > 1:
                 r0 -= self.mazethickness
             if mazeoutside and p < self.parts:
@@ -224,10 +263,12 @@ class Config:
                 r2 += self.textdepth
             if nextinside:
                 r2 += self.mazethickness
+            # The base sits flush with the NEXT part's outside, so it uses
+            # that part's wall thickness.
             if nextoutside or p + 1 == self.parts:
-                r2 += self.wallthickness
+                r2 += self.wall_t(p + 1)
             if self.basewide and p + 1 < self.parts:
-                r2 += self.mazethickness if nextoutside else self.wallthickness
+                r2 += self.mazethickness if nextoutside else self.wall_t(p + 1)
 
             r3 = r2
             if self.outersides and p + 1 >= self.parts:
@@ -237,6 +278,57 @@ class Config:
             self.part_r1s[p] = r1
             self.part_r2s[p] = r2
             self.part_r3s[p] = r3
+
+    def wall_t(self, part: int) -> float:
+        """Wall thickness (mm) for a part: the latest stage at or below it."""
+        wall = self.wallthickness
+        for sp, sw, _sb in self.stages:
+            if sp <= part and sw is not None:
+                wall = sw
+        return wall
+
+    def base_t(self, part: int) -> float:
+        """End-cap (base) thickness (mm) for a part: the latest stage at or below it.
+
+        Includes the logodepth adjustment once generate() has applied it.
+        """
+        base = self.basethickness
+        for sp, _sw, sb in self.stages:
+            if sp <= part and sb is not None:
+                base = sb + self.logo_adjust
+        return base
+
+    def part_height(self, part: int) -> float:
+        """Overall height (mm) of a part, from the bottom of its base to its rim."""
+        height = ((self.coregap + self.baseheight if self.coresolid else 0) +
+                  self.coreheight + self.basethickness +
+                  (self.basethickness + self.basegap) * (part - 1))
+        if part == 1:
+            height -= self.coreheight if self.coresolid else self.coregap
+        if part > 1:
+            height -= self.baseheight
+        # A thicker end cap on part q raises the height of part q and of every
+        # part enclosing it; inside heights of parts <= q are unchanged.
+        for q in range(1, part + 1):
+            extra = self.base_t(q) - self.basethickness
+            if extra:
+                height += extra
+        return height
+
+    def part_dimensions(self, part: int) -> dict:
+        """Key dimensions (mm) of a part.
+
+        inner_radius:  innermost surface (wall, or inside-maze ridges).
+        outer_radius:  outermost surface of the wall (or outside-maze ridges).
+        base_radius:   outer radius of the base (flat-to-centre for polygons).
+        inside_height: from the inside floor (top of the end cap) to the rim.
+        """
+        return {
+            "inner_radius": self.part_r0s[part],
+            "outer_radius": self.part_r1s[part],
+            "base_radius": self.part_r2s[part],
+            "inside_height": self.part_height(part) - self.base_t(part),
+        }
 
     def get_maze_flags(self, part: int):
         """Return (mazeinside, mazeoutside, nextinside, nextoutside) for a part."""
